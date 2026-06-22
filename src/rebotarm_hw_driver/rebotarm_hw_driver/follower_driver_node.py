@@ -122,8 +122,18 @@ class FollowerDriverNode(Node):
             kwargs['cfg_path'] = config_path
         self.arm = RobotArm(**kwargs)
         self.arm.connect()
-        self.arm.enable()
+
+        self.get_logger().info('Enabling motors...')
+        try:
+            self.arm.enable()
+        except Exception as e:
+            self.get_logger().error(f'Motor enable failed: {e}')
+            self.get_logger().error('Check: ip -s link show can0')
+            self.get_logger().error('Check: sudo ip link set can0 up type can bitrate 500000')
+            raise
+
         self.arm.mode_mit(kp=_ZERO, kd=np.full(self.arm.num_joints, 1.0))
+        self.get_logger().info('MIT mode activated')
         self._ctrl = _FollowController()
         self.arm.start_control_loop(self._ctrl, rate=self.arm._rate)
         self._shutdown_done = False

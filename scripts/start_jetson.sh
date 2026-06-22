@@ -28,6 +28,20 @@ RELAY_WS="$HOME/Project/leader_follower"
 
 source /opt/ros/humble/setup.bash
 
+# ── CAN 总线初始化 (从臂电机需要) ──
+if [ "$MODE" = "real" ]; then
+    echo "=== Initializing CAN bus (can0, 500kbps) ==="
+    if ! ip link show can0 &>/dev/null; then
+        sudo ip link set can0 type can bitrate 500000 2>/dev/null || true
+    fi
+    if ip link show can0 | grep -q "state DOWN"; then
+        sudo ip link set can0 up
+        echo "  can0 is UP"
+    else
+        echo "  can0 already up"
+    fi
+fi
+
 echo "=== Starting leader arm (digital twin + driver) ==="
 source "$LEADER_WS/install/setup.bash"
 ros2 launch stararm102_description digital_twin.launch.py \
@@ -43,6 +57,16 @@ if [ "$MODE" = "real" ]; then
         use_rviz:=false output_topic:=/follower/joint_states &
     FOLLOWER_PID=$!
     sleep 3
+
+    # 检查从臂电机是否使能成功
+    echo "=== Checking follower motor status ==="
+    if timeout 3 ros2 topic echo /follower/joint_states --once > /dev/null 2>&1; then
+        echo "  Follower motors ENABLED (joint_states publishing)"
+    else
+        echo "  WARNING: Follower joint_states not publishing!"
+        echo "  Check: ip -s link show can0"
+        echo "  Check: ros2 topic list | grep follower"
+    fi
 
     echo "=== Starting relay node (real mode) ==="
     RELAY_CFG="$RELAY_WS/install/joint_state_relay/share/joint_state_relay/config/relay_real.yaml"
