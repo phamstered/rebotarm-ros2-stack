@@ -1,7 +1,16 @@
 #!/bin/bash
-# Jetson: 启动主臂 + 从臂驱动 + relay (real 模式)
-# 所有节点在 ROS_DOMAIN_ID=0 下运行
+# Jetson: 启动主臂 + relay
+# 用法: ./scripts/start_jetson.sh [--mode=gazebo|real]
+#   gazebo: 仅主臂 + relay (从臂在 Ubuntu Gazebo 仿真)
+#   real:   主臂 + 从臂驱动 + relay (从臂为真实硬件)
 set -e
+
+MODE="gazebo"
+for arg in "$@"; do
+    case $arg in
+        --mode=*) MODE="${arg#*=}" ;;
+    esac
+done
 
 cleanup() {
     echo "Stopping Jetson nodes..."
@@ -26,26 +35,42 @@ ros2 launch stararm102_description digital_twin.launch.py \
 LEADER_PID=$!
 sleep 4
 
-echo "=== Starting follower arm driver ==="
 source "$RELAY_WS/install/setup.bash"
-ros2 launch rebotarm_hw_driver follower_driver.launch.py \
-    use_rviz:=false output_topic:=/follower/joint_states &
-FOLLOWER_PID=$!
-sleep 3
 
-echo "=== Starting relay node (real mode) ==="
-RELAY_CFG="$RELAY_WS/install/joint_state_relay/share/joint_state_relay/config/relay_real.yaml"
-ros2 run joint_state_relay relay_node --ros-args \
-    -p config_path:="$RELAY_CFG" &
-RELAY_PID=$!
+if [ "$MODE" = "real" ]; then
+    echo "=== Starting follower arm driver (real hardware) ==="
+    ros2 launch rebotarm_hw_driver follower_driver.launch.py \
+        use_rviz:=false output_topic:=/follower/joint_states &
+    FOLLOWER_PID=$!
+    sleep 3
+
+    echo "=== Starting relay node (real mode) ==="
+    RELAY_CFG="$RELAY_WS/install/joint_state_relay/share/joint_state_relay/config/relay_real.yaml"
+    ros2 run joint_state_relay relay_node --ros-args \
+        -p config_path:="$RELAY_CFG" &
+    RELAY_PID=$!
+else
+    echo "=== Starting relay node (gazebo mode) ==="
+    RELAY_CFG="$RELAY_WS/install/joint_state_relay/share/joint_state_relay/config/relay.yaml"
+    ros2 run joint_state_relay relay_node --ros-args \
+        -p config_path:="$RELAY_CFG" &
+    RELAY_PID=$!
+fi
+
 sleep 2
 
 echo ""
-echo "=== Jetson running (real mode) ==="
+echo "=== Jetson running ($MODE mode) ==="
 echo "  Leader: /joint_states (~31Hz, Star-Arm-102)"
-echo "  Follower: /follower/joint_states (50Hz, reBotArm B601)"
+if [ "$MODE" = "real" ]; then
+    echo "  Follower: /follower/joint_states (50Hz, reBotArm B601)"
+fi
 echo "  Relay: /joint_states -> /joint_commands (100Hz)"
 echo ""
 echo "Press Ctrl+C to stop"
 
-wait $LEADER_PID $FOLLOWER_PID $RELAY_PID
+if [ "$MODE" = "real" ]; then
+    wait $LEADER_PID $FOLLOWER_PID $RELAY_PID
+else
+    wait $LEADER_PID $RELAY_PID
+fi

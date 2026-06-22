@@ -36,6 +36,12 @@
 
 **用法示例：**
 ```bash
+# Jetson: gazebo 模式 (仅主臂+relay，从臂在 Ubuntu 仿真)
+./scripts/start_jetson.sh --mode=gazebo
+
+# Jetson: real 模式 (主臂+从臂硬件+relay)
+./scripts/start_jetson.sh --mode=real
+
 # Ubuntu: 有 GUI
 ./scripts/start_gazebo.sh
 
