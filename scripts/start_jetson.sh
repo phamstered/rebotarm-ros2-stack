@@ -18,7 +18,10 @@ cleanup() {
     pkill -f digital_twin 2>/dev/null || true
     pkill -f robo_driver 2>/dev/null || true
     pkill -f stararm102_controller 2>/dev/null || true
-    pkill -f follower_driver 2>/dev/null || true
+    # 从臂驱动: 发 SIGINT 触发归零+disable (SIGTERM 被忽略)
+    pkill -2 -f follower_driver 2>/dev/null || true
+    echo "  Waiting for follower to return to zero (5s)..."
+    sleep 5  # 等待归零完成 (_RETURN_DURATION=2s + 余量)
     pkill -f robot_state_publisher 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM

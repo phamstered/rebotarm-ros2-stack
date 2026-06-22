@@ -195,7 +195,8 @@ class FollowerDriverNode(Node):
 
         not_zero = self._check_zero()
         if not not_zero:
-            self.get_logger().info('All joints at zero, exiting.')
+            self.get_logger().info('All joints at zero, disabling motors...')
+            self.arm.disable()
             self.arm.disconnect()
             sys.exit(0)
 
@@ -204,6 +205,7 @@ class FollowerDriverNode(Node):
             self.get_logger().warn(
                 f'  {name}: {pos:+.3f} rad ({np.degrees(pos):+.1f}°)')
         self.get_logger().warn('手动归零后按 Ctrl+C 退出')
+        self.arm.disable()
 
 
 def main(args=None):
