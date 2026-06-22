@@ -3,7 +3,6 @@
 # 用法: ./scripts/start_jetson.sh [--mode=gazebo|real]
 #   gazebo: 仅主臂 + relay (从臂在 Ubuntu Gazebo 仿真)
 #   real:   主臂 + 从臂驱动 + relay (从臂为真实硬件)
-set -e
 
 MODE="gazebo"
 for arg in "$@"; do
@@ -12,19 +11,38 @@ for arg in "$@"; do
     esac
 done
 
+_CLEANUP_DONE=0
 cleanup() {
-    echo "Stopping Jetson nodes..."
+    if [ "$_CLEANUP_DONE" = "1" ]; then return; fi
+    _CLEANUP_DONE=1
+    echo ""
+    echo "=== Stopping Jetson nodes ==="
+    if [ "$MODE" = "real" ]; then
+        echo "  Stopping follower driver (return to zero + disable)..."
+        # 发 SIGINT 触发归零流程 (follower_driver 忽略 SIGTERM)
+        pkill -2 -f follower_driver 2>/dev/null || true
+        # 等待退出，最多 8 秒
+        for i in $(seq 1 8); do
+            if ! pgrep -f follower_driver > /dev/null 2>&1; then
+                echo "  Follower driver exited."
+                break
+            fi
+            sleep 1
+        done
+        if pgrep -f follower_driver > /dev/null 2>&1; then
+            echo "  Follower driver still running, force killing..."
+            pkill -9 -f follower_driver 2>/dev/null || true
+        fi
+    fi
     pkill -f relay_node 2>/dev/null || true
     pkill -f digital_twin 2>/dev/null || true
     pkill -f robo_driver 2>/dev/null || true
     pkill -f stararm102_controller 2>/dev/null || true
-    # 从臂驱动: 发 SIGINT 触发归零+disable (SIGTERM 被忽略)
-    pkill -2 -f follower_driver 2>/dev/null || true
-    echo "  Waiting for follower to return to zero (5s)..."
-    sleep 5  # 等待归零完成 (_RETURN_DURATION=2s + 余量)
     pkill -f robot_state_publisher 2>/dev/null || true
+    echo "  All stopped."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 0' INT TERM
 
 LEADER_WS="$HOME/Project/Star-Arm-102/ROS2_HUMBLE"
 RELAY_WS="$HOME/Project/leader_follower"
@@ -56,19 +74,17 @@ source "$RELAY_WS/install/setup.bash"
 
 if [ "$MODE" = "real" ]; then
     echo "=== Starting follower arm driver (real hardware) ==="
-    ros2 launch rebotarm_hw_driver follower_driver.launch.py \
+    # 用 setsid 创建新进程组，避免 Ctrl+C 直接发到 follower
+    setsid ros2 launch rebotarm_hw_driver follower_driver.launch.py \
         use_rviz:=false output_topic:=/follower/joint_states &
     FOLLOWER_PID=$!
     sleep 3
 
-    # 检查从臂电机是否使能成功
     echo "=== Checking follower motor status ==="
     if timeout 3 ros2 topic echo /follower/joint_states --once > /dev/null 2>&1; then
-        echo "  Follower motors ENABLED (joint_states publishing)"
+        echo "  Follower motors ENABLED"
     else
         echo "  WARNING: Follower joint_states not publishing!"
-        echo "  Check: ip -s link show can0"
-        echo "  Check: ros2 topic list | grep follower"
     fi
 
     echo "=== Starting relay node (real mode) ==="
@@ -96,8 +112,4 @@ echo "  Relay: /joint_states -> /joint_commands (100Hz)"
 echo ""
 echo "Press Ctrl+C to stop"
 
-if [ "$MODE" = "real" ]; then
-    wait $LEADER_PID $FOLLOWER_PID $RELAY_PID
-else
-    wait $LEADER_PID $RELAY_PID
-fi
+wait

@@ -137,6 +137,7 @@ class FollowerDriverNode(Node):
         self._ctrl = _FollowController()
         self.arm.start_control_loop(self._ctrl, rate=self.arm._rate)
         self._shutdown_done = False
+        self._shutdown_complete = False
 
         self.joint_names = ['joint1', 'joint2', 'joint3',
                             'joint4', 'joint5', 'joint6']
@@ -198,35 +199,38 @@ class FollowerDriverNode(Node):
             self.get_logger().info('All joints at zero, disabling motors...')
             self.arm.disable()
             self.arm.disconnect()
-            sys.exit(0)
+        else:
+            self.get_logger().warn('=== 以下关节未归零，请手动归零 ===')
+            for name, pos in not_zero:
+                self.get_logger().warn(
+                    f'  {name}: {pos:+.3f} rad ({np.degrees(pos):+.1f}°)')
+            self.arm.disable()
 
-        self.get_logger().warn('=== 以下关节未归零，请手动归零 ===')
-        for name, pos in not_zero:
-            self.get_logger().warn(
-                f'  {name}: {pos:+.3f} rad ({np.degrees(pos):+.1f}°)')
-        self.get_logger().warn('手动归零后按 Ctrl+C 退出')
-        self.arm.disable()
+        self._shutdown_complete = True
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = FollowerDriverNode()
-    _force_exit = [False]
+    _shutdown_triggered = threading.Event()
 
     def _on_sigint(signum, frame):
-        if _force_exit[0]:
+        if _shutdown_triggered.is_set():
             node.get_logger().warn('Force exit!')
             node.arm.disconnect()
             sys.exit(1)
-        _force_exit[0] = True
+        _shutdown_triggered.set()
         node.get_logger().info('Ctrl+C: returning to zero... (再按 Ctrl+C 强制退出)')
-        node.shutdown()
+        threading.Thread(target=node.shutdown, daemon=True).start()
 
     signal.signal(signal.SIGINT, _on_sigint)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     try:
-        rclpy.spin(node)
+        while rclpy.ok():
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if node._shutdown_complete:
+                break
     except Exception:
         pass
 
