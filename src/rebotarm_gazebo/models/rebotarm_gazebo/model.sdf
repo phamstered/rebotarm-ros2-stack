@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<sdf version="1.9">
+  <model name="rebotarm">
+    <static>false</static>
+    <self_collide>false</self_collide>
+
+    <link name="world"/>
+
+    <joint name="world_fixed" type="fixed">
+      <parent>world</parent>
+      <child>base_link</child>
+    </joint>
+
+    <link name="base_link">
+      <inertial>
+        <mass>0.837</mass>
+        <inertia><ixx>0.00276</ixx><iyy>0.00213</iyy><izz>0.00133</izz></inertia>
+      </inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/base_link.STL</uri></mesh></geometry></visual>
+      <collision name="c"><geometry><box><size>0.05 0.05 0.05</size></box></geometry></collision>
+    </link>
+
+    <link name="link1">
+      <inertial><mass>0.161</mass><inertia><ixx>0.000234</ixx><iyy>0.000155</iyy><izz>0.000252</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link1.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="link2">
+      <inertial><mass>1.327</mass><inertia><ixx>0.0128</ixx><iyy>0.0126</iyy><izz>0.000734</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link2.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="link3">
+      <inertial><mass>0.835</mass><inertia><ixx>0.00648</ixx><iyy>0.00633</iyy><izz>0.000468</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link3.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="link4">
+      <inertial><mass>0.520</mass><inertia><ixx>0.000667</ixx><iyy>0.000753</iyy><izz>0.000460</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link4.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="link5">
+      <inertial><mass>0.383</mass><inertia><ixx>0.000172</ixx><iyy>0.000217</iyy><izz>0.000198</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link5.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="link6">
+      <inertial><mass>0.366</mass><inertia><ixx>0.000140</ixx><iyy>0.000156</iyy><izz>0.000156</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/link6.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <link name="end_link">
+      <inertial><mass>0.550</mass><inertia><ixx>0.000453</ixx><iyy>0.000158</iyy><izz>0.000374</izz></inertia></inertial>
+      <visual name="v"><geometry><mesh><uri>model://rebotarm_gazebo/meshes/end_link.STL</uri></mesh></geometry></visual>
+    </link>
+
+    <joint name="joint1" type="revolute">
+      <parent>base_link</parent><child>link1</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-2.8</lower><upper>2.8</upper></limit></axis>
+    </joint>
+    <joint name="joint2" type="revolute">
+      <parent>link1</parent><child>link2</child>
+      <axis><xyz>0 0 -1</xyz><limit><lower>-3.14</lower><upper>0</upper></limit></axis>
+    </joint>
+    <joint name="joint3" type="revolute">
+      <parent>link2</parent><child>link3</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-3.14</lower><upper>0</upper></limit></axis>
+    </joint>
+    <joint name="joint4" type="revolute">
+      <parent>link3</parent><child>link4</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1.87</lower><upper>1.57</upper></limit></axis>
+    </joint>
+    <joint name="joint5" type="revolute">
+      <parent>link4</parent><child>link5</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-1.57</lower><upper>1.57</upper></limit></axis>
+    </joint>
+    <joint name="joint6" type="revolute">
+      <parent>link5</parent><child>link6</child>
+      <axis><xyz>0 0 1</xyz><limit><lower>-3.14</lower><upper>3.14</upper></limit></axis>
+    </joint>
+    <joint name="end_joint" type="fixed">
+      <parent>link6</parent><child>end_link</child>
+    </joint>
+
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>/home/jialiang/Project/leader_follower/install/rebotarm_gazebo/share/rebotarm_gazebo/config/ros2_controllers.yaml</parameters>
+    </plugin>
+  </model>
+</sdf>

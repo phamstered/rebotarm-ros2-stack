@@ -1,0 +1,82 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>ign_ros2_control/IgnitionSystem</plugin>
+    </hardware>
+
+    <joint name="joint1">
+      <command_interface name="position">
+        <param name="min">-2.8</param>
+        <param name="max">2.8</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="joint2">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">0.0</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="joint3">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">0.0</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="joint4">
+      <command_interface name="position">
+        <param name="min">-1.87</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="joint5">
+      <command_interface name="position">
+        <param name="min">-1.57</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+
+    <joint name="joint6">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">3.14</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find rebotarm_gazebo)/config/ros2_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+</robot>

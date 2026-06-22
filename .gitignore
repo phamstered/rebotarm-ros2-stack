@@ -1,0 +1,21 @@
+# ROS2 / colcon
+build/
+install/
+log/
+*.pyc
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gazebo
+*.sdf.bak
+/tmp/

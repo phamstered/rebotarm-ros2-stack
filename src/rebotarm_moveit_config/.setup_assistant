@@ -1,0 +1,10 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: rebotarm_moveit_config
+    relative_path: config/rebotarm_moveit.urdf.xacro
+  srdf:
+    relative_path: config/rebotarm.srdf
+  package_settings:
+    author_name: jialiang
+    author_email: dev@example.com
+    generated_timestamp: 1753949700

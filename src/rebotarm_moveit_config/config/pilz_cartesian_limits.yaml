@@ -1,0 +1,4 @@
+default_velocity_scaling_factor: 0.3
+default_acceleration_scaling_factor: 0.3
+
+max_cartesian_speed: 0.5

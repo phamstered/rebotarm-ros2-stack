@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+    </hardware>
+    <xacro:macro name="joint_interface" params="name lower upper">
+      <joint name="${name}">
+        <command_interface name="position">
+          <param name="min">${lower}</param>
+          <param name="max">${upper}</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+      </joint>
+    </xacro:macro>
+    <xacro:joint_interface name="joint1" lower="-2.8" upper="2.8"/>
+    <xacro:joint_interface name="joint2" lower="-3.14" upper="0.0"/>
+    <xacro:joint_interface name="joint3" lower="-3.14" upper="0.0"/>
+    <xacro:joint_interface name="joint4" lower="-1.87" upper="1.57"/>
+    <xacro:joint_interface name="joint5" lower="-1.57" upper="1.57"/>
+    <xacro:joint_interface name="joint6" lower="-3.14" upper="3.14"/>
+  </ros2_control>
+</robot>
