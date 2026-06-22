@@ -18,6 +18,9 @@ def generate_launch_description():
 
     use_rviz_arg = DeclareLaunchArgument('use_rviz', default_value='true')
     rate_arg = DeclareLaunchArgument('rate', default_value='50.0')
+    output_topic_arg = DeclareLaunchArgument(
+        'output_topic', default_value='/follower/joint_states',
+        description='Topic name for follower joint states (avoids collision with leader)')
 
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
@@ -44,6 +47,9 @@ def generate_launch_description():
         parameters=[{
             'rate': LaunchConfiguration('rate'),
         }],
+        remappings=[
+            ('joint_states', LaunchConfiguration('output_topic')),
+        ],
         output='screen',
         sigterm_timeout='120',
         sigkill_timeout='10',
@@ -52,6 +58,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_rviz_arg,
         rate_arg,
+        output_topic_arg,
         robot_state_publisher_node,
         rviz_node,
         follower_driver_node,

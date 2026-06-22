@@ -1,0 +1,56 @@
+# joint_state_relay 配置文件 — real 模式
+# 主从臂都在 Jetson 上，ROS_DOMAIN_ID=0
+
+# 桥接模式
+mode: "real"
+
+# 话题名称
+leader_topic: "/joint_states"
+follower_command_topic: "/joint_commands"
+
+# 关节映射: leader 关节名 → follower 关节名
+joint_mapping:
+  joint1: joint1
+  joint2: joint2
+  joint3: joint3
+  joint4: joint4
+  joint5: joint5
+  joint6: joint6
+
+# 每关节变换: follower_position = sign * leader_position + offset
+joints:
+  joint1:
+    sign: -1.0
+    offset: 0.0
+    leader_limit: [-2.27, 2.27]
+    follower_limit: [-2.8, 2.8]
+  joint2:
+    sign: -1.0
+    offset: 0.0
+    leader_limit: [0.0, 3.14]
+    follower_limit: [-3.14, 0.0]
+  joint3:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-3.14, 0.0]
+    follower_limit: [-3.14, 0.0]
+  joint4:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-1.57, 2.2]
+    follower_limit: [-1.87, 1.57]
+  joint5:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-1.2, 1.2]
+    follower_limit: [-1.57, 1.57]
+  joint6:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-3.14, 3.14]
+    follower_limit: [-3.14, 3.14]
+
+# 安全限制
+max_velocity: 3.0        # rad/s, 速率限制 (防止突变)
+command_timeout: 0.1      # s, 超时后停止发送
+publish_rate: 100.0       # Hz, 桥接节点发布频率
