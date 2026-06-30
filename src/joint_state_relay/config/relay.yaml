@@ -21,42 +21,50 @@ joint_mapping:
   joint7_left: gripper_finger_left_joint
 
 # 每关节变换: follower_position = sign * leader_position + offset
+# deadband: 变化量小于此值时忽略 (单位: follower 单位, rad 或 m)
 joints:
   joint1:
     sign: -1.0
     offset: 0.0
     leader_limit: [-2.27, 2.27]
     follower_limit: [-2.8, 2.8]
+    deadband: 0.005
   joint2:
     sign: -1.0
     offset: 0.0
     leader_limit: [0.0, 3.14]
     follower_limit: [-3.14, 0.0]
+    deadband: 0.005
   joint3:
     sign: 1.0
     offset: 0.0
     leader_limit: [-3.14, 0.0]
     follower_limit: [-3.14, 0.0]
+    deadband: 0.005
   joint4:
     sign: 1.0
     offset: 0.0
     leader_limit: [-1.57, 2.2]
     follower_limit: [-1.87, 1.57]
+    deadband: 0.005
   joint5:
     sign: 1.0
     offset: 0.0
     leader_limit: [-1.2, 1.2]
     follower_limit: [-1.57, 1.57]
+    deadband: 0.005
   joint6:
     sign: 1.0
     offset: 0.0
     leader_limit: [-3.14, 3.14]
     follower_limit: [-3.14, 3.14]
+    deadband: 0.005
   gripper_finger_left_joint:
     sign: 0.0127
     offset: 0.0
     leader_limit: [0, 1.57]
     follower_limit: [0, 0.0715]
+    deadband: 0.001
 
 # 安全限制
 max_velocity: 10.0       # rad/s, 速率限制 (防止突变)

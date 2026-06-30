@@ -58,6 +58,9 @@ class JointStateRelay(Node):
         self._gripper_goal_send_time = None
         self._goal_timeout = 0.1  # 100ms timeout for goal response
 
+        # Deadband: store last commanded position per joint
+        self._last_commanded_positions = {}
+
         self._sub = self.create_subscription(
             JointState, self._config['leader_topic'],
             self._leader_cb, 10)
@@ -102,7 +105,19 @@ class JointStateRelay(Node):
             if leader_name in positions:
                 cfg = self._joints_cfg[follower_name]
                 pos = positions[leader_name]
-                mapped[follower_name] = cfg['sign'] * pos + cfg['offset']
+                new_pos = cfg['sign'] * pos + cfg['offset']
+
+                # Apply deadband: ignore small changes
+                deadband = cfg.get('deadband', 0.0)
+                last_pos = self._last_commanded_positions.get(follower_name)
+                if last_pos is not None and deadband > 0:
+                    if abs(new_pos - last_pos) < deadband:
+                        # Change is within deadband, keep previous position
+                        mapped[follower_name] = last_pos
+                        continue
+
+                mapped[follower_name] = new_pos
+                self._last_commanded_positions[follower_name] = new_pos
 
         if mapped:
             self._last_leader_positions = mapped

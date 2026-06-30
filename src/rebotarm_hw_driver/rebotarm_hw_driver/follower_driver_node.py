@@ -19,6 +19,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
 from reBotArm_control_py.actuator.arm import RobotArm
+from reBotArm_control_py.actuator.gripper import Gripper
 from reBotArm_control_py.dynamics import compute_generalized_gravity
 
 _JOINT4_GRAVITY_SCALE = 0.85
@@ -30,14 +31,28 @@ _KP_HOLD = 20.0
 _KD_HOLD = 2.0
 _ZERO_THRESHOLD = 0.015
 
-_KP_TRACK = 50.0
-_KD_TRACK = 3.0
+_KP_TRACK = 40.0
+_KD_TRACK = 6.0
 _KP_IDLE = 0.0
 _KD_IDLE = 1.0
 _CMD_TIMEOUT = 0.1
 
+# Gripper: prismatic displacement (m) → motor position (rad)
+# Zero = closed, negative = open
+# Main arm: 0 deg (closed) ~ 54.10 deg (0.944 rad, open)
+# Motor: 0 rad (closed) ~ -2.66 rad (open)
+# Prismatic: 0 m (closed) ~ 0.02 m (open)
+# Scale: -2.66 / 0.02 = -133
+_GRIPPER_POS_SCALE = -133.0
+_GRIPPER_KP = 12.0  # 降低 kp 减少振荡
+_GRIPPER_KD = 3.0   # 增加 kd 抑制振荡
+_GRIPPER_EMA_ALPHA = 0.3  # 滤波系数
+_GRIPPER_DEADBAND = 0.0005  # 死区 (m)
+
 
 class _FollowController:
+    _EMA_ALPHA = 0.5  # low-pass filter coefficient for target smoothing
+
     def __init__(self):
         self._tracking = False
         self._target_buf = [None, None]
@@ -49,6 +64,7 @@ class _FollowController:
         self._start_pos = None
         self._return_elapsed = 0.0
         self._return_done = False
+        self._filtered_target = None
 
     def set_target(self, positions: np.ndarray):
         with self._lock:
@@ -97,12 +113,20 @@ class _FollowController:
                     target = self._target_buf[1 - self._write_idx]
                 if target is None:
                     target = q
+                # low-pass filter to smooth sudden position jumps
+                if self._filtered_target is None:
+                    self._filtered_target = target.copy()
+                else:
+                    self._filtered_target = (self._EMA_ALPHA * target
+                                             + (1.0 - self._EMA_ALPHA) * self._filtered_target)
+                target = self._filtered_target
                 kp = np.full(6, _KP_TRACK)
                 kd = np.full(6, _KD_TRACK)
         else:
             target = q
             kp = np.full(6, _KP_IDLE)
             kd = np.full(6, _KD_IDLE)
+            self._filtered_target = None  # reset filter
 
         arm.mit(pos=target, vel=_ZERO, kp=kp, kd=kd, tau=tau_g,
                 request_feedback=True)
@@ -113,9 +137,11 @@ class FollowerDriverNode(Node):
         super().__init__('rebotarm_follower_driver')
         self.declare_parameter('rate', 50.0)
         self.declare_parameter('config_path', '')
+        self.declare_parameter('enable_gripper', True)
 
         rate = self.get_parameter('rate').value
         config_path = self.get_parameter('config_path').value
+        enable_gripper = self.get_parameter('enable_gripper').value
 
         kwargs = {}
         if config_path:
@@ -142,6 +168,22 @@ class FollowerDriverNode(Node):
         self.joint_names = ['joint1', 'joint2', 'joint3',
                             'joint4', 'joint5', 'joint6']
 
+        # Gripper
+        self._gripper = None
+        self._gripper_pos = 0.0
+        self._gripper_filtered_pos = 0.0
+        self._gripper_target = 0.0
+        if enable_gripper:
+            try:
+                gripper_cfg = str(Path.home() / 'Project' / 'leader_follower' / 'src' / 'rebotarm_hw_driver' / 'config' / 'gripper_can.yaml')
+                self._gripper = Gripper(cfg_path=gripper_cfg)
+                self._gripper.enable()
+                self._gripper.mode_mit(kp=_GRIPPER_KP, kd=_GRIPPER_KD)
+                self.get_logger().info(f'Gripper enabled (kp={_GRIPPER_KP}, kd={_GRIPPER_KD})')
+                self.joint_names.append('gripper_finger_left_joint')
+            except Exception as e:
+                self.get_logger().warn(f'Gripper init failed: {e}')
+
         self.publisher = self.create_publisher(JointState, 'joint_states', 10)
         self.create_timer(1.0 / rate, self._publish)
 
@@ -150,14 +192,36 @@ class FollowerDriverNode(Node):
 
         self.get_logger().info(
             f'Follower driver started at {rate} Hz '
-            f'(gravity comp @ {self.arm._rate} Hz)')
+            f'(gravity comp @ {self.arm._rate} Hz, '
+            f'gripper={"enabled" if self._gripper else "disabled"})')
 
     def _command_cb(self, msg: JointState):
         positions = np.zeros(6)
         for i, name in enumerate(msg.name):
             if name in self.joint_names and i < len(msg.position):
-                idx = self.joint_names.index(name)
-                positions[idx] = msg.position[i]
+                if name == 'gripper_finger_left_joint':
+                    # Gripper: convert prismatic displacement (m) to motor position (rad)
+                    if self._gripper is not None:
+                        prismatic_pos = msg.position[i]
+
+                        # 死区：变化太小则忽略
+                        if abs(prismatic_pos - self._gripper_target) < _GRIPPER_DEADBAND:
+                            continue
+
+                        self._gripper_target = prismatic_pos
+
+                        # EMA 滤波
+                        self._gripper_filtered_pos = (
+                            _GRIPPER_EMA_ALPHA * prismatic_pos +
+                            (1.0 - _GRIPPER_EMA_ALPHA) * self._gripper_filtered_pos
+                        )
+
+                        motor_pos = self._gripper_filtered_pos * _GRIPPER_POS_SCALE
+                        self._gripper_pos = motor_pos
+                        self._gripper.mit(pos=motor_pos)
+                else:
+                    idx = self.joint_names.index(name)
+                    positions[idx] = msg.position[i]
         self._ctrl.set_target(positions)
 
     def _publish(self):
@@ -165,10 +229,25 @@ class FollowerDriverNode(Node):
             p, v, t = self.arm.get_positions(), self.arm.get_velocities(), self.arm.get_torques()
             msg = JointState()
             msg.header.stamp = self.get_clock().now().to_msg()
-            msg.name = self.joint_names
-            msg.position = p.tolist()
-            msg.velocity = v.tolist()
-            msg.effort = t.tolist()
+
+            if self._gripper is not None:
+                # Convert motor position (rad) back to prismatic displacement (m)
+                motor_pos = self._gripper.get_position(request=False)
+                motor_vel = self._gripper.get_velocity(request=False)
+                motor_torq = self._gripper.get_torque(request=False)
+                gripper_pos = motor_pos / _GRIPPER_POS_SCALE
+                gripper_vel = motor_vel / _GRIPPER_POS_SCALE
+
+                msg.name = self.joint_names
+                msg.position = p.tolist() + [gripper_pos]
+                msg.velocity = v.tolist() + [gripper_vel]
+                msg.effort = t.tolist() + [motor_torq]
+            else:
+                msg.name = self.joint_names
+                msg.position = p.tolist()
+                msg.velocity = v.tolist()
+                msg.effort = t.tolist()
+
             self.publisher.publish(msg)
         except Exception as e:
             self.get_logger().error(f'Publish failed: {e}')
@@ -205,6 +284,15 @@ class FollowerDriverNode(Node):
                 self.get_logger().warn(
                     f'  {name}: {pos:+.3f} rad ({np.degrees(pos):+.1f}°)')
             self.arm.disable()
+
+        # Shutdown gripper
+        if self._gripper is not None:
+            self.get_logger().info('Disabling gripper...')
+            try:
+                self._gripper.disable()
+                self._gripper.disconnect()
+            except Exception as e:
+                self.get_logger().warn(f'Gripper shutdown error: {e}')
 
         self._shutdown_complete = True
 

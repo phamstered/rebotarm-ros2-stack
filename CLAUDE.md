@@ -33,6 +33,9 @@
 | `scripts/sync_and_build.sh` | Mac | 同步代码到 Jetson+Ubuntu 并编译 |
 | `scripts/debug_gazebo_data_flow.sh` | Ubuntu | 诊断 Gazebo 数据流 |
 | `scripts/prepare_urdf.py` | Ubuntu | 生成带 world 固定关节的 URDF |
+| `scripts/measure_zero_offset.py` | Jetson | 测量夹爪零点偏移 |
+| `scripts/measure_gripper.py` | Jetson | 测量夹爪完整映射 |
+| `scripts/monitor_gripper.py` | Jetson | 监控夹爪电机状态 |
 
 **用法示例：**
 ```bash
@@ -50,6 +53,15 @@
 
 # 诊断数据流
 ./scripts/debug_gazebo_data_flow.sh
+
+# 测量夹爪零点偏移 (需要先启动从臂驱动)
+python3 scripts/measure_zero_offset.py --domain 0 --duration 5
+
+# 测量夹爪完整映射 (交互式)
+python3 scripts/measure_gripper.py --domain 0
+
+# 监控夹爪电机状态
+python3 scripts/monitor_gripper.py --duration 60 --domain 0
 ```
 
 ## 技术栈
@@ -73,9 +85,48 @@
 
 ### 关节映射
 
-- 1:6 映射：leader joint1-6 → follower joint1-6，忽略夹爪
+- 1:7 映射：leader joint1-6 → follower joint1-6，leader joint7_left → follower gripper_finger_left_joint
 - 符号翻转：`follower_pos = sign * leader_pos + offset`
+- 夹爪缩放：`gripper_pos = 0.0127 * leader_gripper_pos` (rad → m)
+- Real 模式：`motor_pos = prismatic_pos * 100.0` (m → rad)
 - sign 配置在 `relay.yaml` 中，经实际校准确认
+
+### 夹爪映射校准
+
+**配置文件**:
+- Gazebo: `src/joint_state_relay/config/relay.yaml` (sign=0.0127, offset=0.0)
+- Real: `src/joint_state_relay/config/relay_real.yaml` (sign=0.0212, offset=0.003619)
+
+**变换公式**:
+```
+follower_pos(m) = sign × leader_pos(rad) + offset
+```
+
+**单位**:
+- Leader: 弧度 (rad) - 旋转关节
+- Follower: 米 (m) - 直线关节 (prismatic)
+- sign: m/rad
+
+**真实从臂驱动转换**:
+```python
+motor_pos = prismatic_pos(m) × -133.0 → 电机位置(rad)
+```
+
+**完整转换链**:
+```
+主臂角度(rad) → sign → 夹爪位移(m) → ×(-133) → 电机角度(rad)
+```
+
+**校准工具**:
+- `scripts/measure_zero_offset.py` - 测量零点偏移，计算修正的 offset
+- `scripts/measure_gripper.py` - 交互式测量完整映射 (sign 和 offset)
+
+**校准步骤**:
+1. 启动从臂驱动: `./scripts/start_jetson.sh --mode=real`
+2. 测量零点偏移: `python3 scripts/measure_zero_offset.py --domain 0 --duration 5`
+3. 根据输出更新配置文件
+4. 重新编译: `colcon build --packages-select joint_state_relay`
+5. 重启 relay 节点
 
 ### DDS 隔离
 
