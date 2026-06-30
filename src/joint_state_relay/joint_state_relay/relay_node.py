@@ -31,7 +31,21 @@ class JointStateRelay(Node):
         self._timeout = self._config.get('command_timeout', 0.1)
         self._publish_rate = self._config.get('publish_rate', 100.0)
 
-        self._follower_joint_names = list(self._joints_cfg.keys())
+        # Separate arm joints from gripper joints
+        self._arm_joint_names = []
+        self._gripper_joint_names = []
+        for name in self._joints_cfg.keys():
+            if name.startswith('gripper_'):
+                self._gripper_joint_names.append(name)
+            else:
+                self._arm_joint_names.append(name)
+
+        # In real mode, include gripper in follower_joint_names for unified publishing
+        if self._mode == 'real':
+            self._follower_joint_names = self._arm_joint_names + self._gripper_joint_names
+        else:
+            self._follower_joint_names = self._arm_joint_names
+
         self._leader_joint_names = [k for k, v in sorted(
             self._mapping.items(), key=lambda x: list(self._mapping.values()).index(x[1]))]
 
@@ -39,6 +53,10 @@ class JointStateRelay(Node):
         self._last_published_positions = None
         self._last_cmd_time = self.get_clock().now()
         self._goal_active = False
+        self._gripper_goal_active = False
+        self._goal_send_time = None
+        self._gripper_goal_send_time = None
+        self._goal_timeout = 0.1  # 100ms timeout for goal response
 
         self._sub = self.create_subscription(
             JointState, self._config['leader_topic'],
@@ -49,6 +67,7 @@ class JointStateRelay(Node):
                 JointState, self._config['follower_command_topic'], 10)
             self._timer = self.create_timer(1.0 / self._publish_rate, self._publish_real)
         else:
+            # Arm controller
             action_ns = self._config.get('gazebo_controller', 'arm_controller')
             action_name = f'/{action_ns}/follow_joint_trajectory'
             self._action_client = ActionClient(
@@ -56,6 +75,15 @@ class JointStateRelay(Node):
             self.get_logger().info(f'Waiting for action server: {action_name}')
             self._action_client.wait_for_server()
             self.get_logger().info(f'Action server connected: {action_name}')
+
+            # Gripper controller
+            gripper_action_name = '/gripper_controller/follow_joint_trajectory'
+            self._gripper_action_client = ActionClient(
+                self, FollowJointTrajectory, gripper_action_name)
+            self.get_logger().info(f'Waiting for gripper action server: {gripper_action_name}')
+            self._gripper_action_client.wait_for_server()
+            self.get_logger().info(f'Gripper action server connected: {gripper_action_name}')
+
             self._timer = self.create_timer(1.0 / self._publish_rate, self._publish_gazebo)
 
         self.get_logger().info(
@@ -79,6 +107,10 @@ class JointStateRelay(Node):
         if mapped:
             self._last_leader_positions = mapped
             self._last_cmd_time = self.get_clock().now()
+
+            # Send gripper command separately in gazebo mode
+            if self._gripper_joint_names and self._mode == 'gazebo':
+                self._send_gripper_command(mapped)
 
     def _transform_positions(self):
         if self._last_leader_positions is None:
@@ -119,14 +151,82 @@ class JointStateRelay(Node):
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = self._follower_joint_names
-        msg.position = positions
-        msg.velocity = []
+        msg.position = [float(p) for p in positions]
+        msg.velocity = [0.0] * len(positions)
         msg.effort = []
         self._pub.publish(msg)
 
+    def _send_gripper_command(self, mapped_positions):
+        """Send gripper position command to gripper_controller."""
+        if self._gripper_goal_active:
+            # Check for timeout
+            if self._gripper_goal_send_time is not None:
+                elapsed = (self.get_clock().now() - self._gripper_goal_send_time).nanoseconds / 1e9
+                if elapsed > self._goal_timeout:
+                    self.get_logger().warn('Gripper goal timeout, resetting')
+                    self._gripper_goal_active = False
+                    self._gripper_goal_send_time = None
+                else:
+                    return
+            else:
+                return
+
+        gripper_positions = []
+        for name in self._gripper_joint_names:
+            pos = mapped_positions.get(name, 0.0)
+            cfg = self._joints_cfg[name]
+            lo, hi = cfg['follower_limit']
+            pos = max(lo, min(hi, pos))
+            gripper_positions.append(pos)
+
+        if not gripper_positions:
+            return
+
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory.joint_names = self._gripper_joint_names
+        point = JointTrajectoryPoint()
+        point.positions = [float(p) for p in gripper_positions]
+        point.velocities = [0.0] * len(gripper_positions)
+        point.time_from_start = Duration(sec=0, nanosec=int(0.02 * 1e9))
+        goal.trajectory.points = [point]
+
+        self._gripper_goal_active = True
+        self._gripper_goal_send_time = self.get_clock().now()
+        future = self._gripper_action_client.send_goal_async(goal)
+        future.add_done_callback(self._gripper_goal_response_cb)
+
+    def _gripper_goal_response_cb(self, future):
+        try:
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                self.get_logger().warn('Gripper trajectory goal rejected')
+                self._gripper_goal_active = False
+                self._gripper_goal_send_time = None
+                return
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(self._gripper_goal_result_cb)
+        except Exception as e:
+            self.get_logger().warn(f'Gripper goal response error: {e}')
+            self._gripper_goal_active = False
+            self._gripper_goal_send_time = None
+
+    def _gripper_goal_result_cb(self, future):
+        self._gripper_goal_active = False
+        self._gripper_goal_send_time = None
+
     def _publish_gazebo(self):
         if self._goal_active:
-            return
+            # Check for timeout
+            if self._goal_send_time is not None:
+                elapsed = (self.get_clock().now() - self._goal_send_time).nanoseconds / 1e9
+                if elapsed > self._goal_timeout:
+                    self.get_logger().warn('Goal timeout, resetting')
+                    self._goal_active = False
+                    self._goal_send_time = None
+                else:
+                    return
+            else:
+                return
 
         positions = self._transform_positions()
         if positions is None:
@@ -135,26 +235,34 @@ class JointStateRelay(Node):
         goal = FollowJointTrajectory.Goal()
         goal.trajectory.joint_names = self._follower_joint_names
         point = JointTrajectoryPoint()
-        point.positions = positions
+        point.positions = [float(p) for p in positions]
         point.velocities = [0.0] * len(positions)
-        point.time_from_start = Duration(sec=0, nanosec=int(0.05 * 1e9))
+        point.time_from_start = Duration(sec=0, nanosec=int(0.02 * 1e9))
         goal.trajectory.points = [point]
 
         self._goal_active = True
+        self._goal_send_time = self.get_clock().now()
         future = self._action_client.send_goal_async(goal)
         future.add_done_callback(self._goal_response_cb)
 
     def _goal_response_cb(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().warn('Trajectory goal rejected')
+        try:
+            goal_handle = future.result()
+            if not goal_handle.accepted:
+                self.get_logger().warn('Trajectory goal rejected')
+                self._goal_active = False
+                self._goal_send_time = None
+                return
+            result_future = goal_handle.get_result_async()
+            result_future.add_done_callback(self._goal_result_cb)
+        except Exception as e:
+            self.get_logger().warn(f'Goal response error: {e}')
             self._goal_active = False
-            return
-        result_future = goal_handle.get_result_async()
-        result_future.add_done_callback(self._goal_result_cb)
+            self._goal_send_time = None
 
     def _goal_result_cb(self, future):
         self._goal_active = False
+        self._goal_send_time = None
 
 
 def main(args=None):

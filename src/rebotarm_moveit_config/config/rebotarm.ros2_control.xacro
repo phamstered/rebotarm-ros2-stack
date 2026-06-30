@@ -22,5 +22,6 @@
     <xacro:joint_interface name="joint4" lower="-1.87" upper="1.57"/>
     <xacro:joint_interface name="joint5" lower="-1.57" upper="1.57"/>
     <xacro:joint_interface name="joint6" lower="-3.14" upper="3.14"/>
+    <xacro:joint_interface name="gripper_finger_left_joint" lower="0" upper="0.0715"/>
   </ros2_control>
 </robot>

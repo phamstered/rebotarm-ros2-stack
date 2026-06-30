@@ -105,6 +105,8 @@ sleep 3
 ros2 run controller_manager spawner joint_state_broadcaster &
 ros2 run controller_manager spawner arm_controller &
 sleep 3
+ros2 run controller_manager spawner gripper_controller &
+sleep 2
 
 # ── Start domain bridge (Jetson domain 0 → Ubuntu domain 1) ──
 echo "=== Starting domain_bridge (Jetson /joint_states → /leader/joint_states) ==="

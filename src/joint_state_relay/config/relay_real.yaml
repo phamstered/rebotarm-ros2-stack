@@ -16,6 +16,7 @@ joint_mapping:
   joint4: joint4
   joint5: joint5
   joint6: joint6
+  joint7_left: gripper_finger_left_joint
 
 # 每关节变换: follower_position = sign * leader_position + offset
 joints:
@@ -49,6 +50,11 @@ joints:
     offset: 0.0
     leader_limit: [-3.14, 3.14]
     follower_limit: [-3.14, 3.14]
+  gripper_finger_left_joint:
+    sign: 0.0212
+    offset: 0.0
+    leader_limit: [0, 0.944]
+    follower_limit: [0, 0.0715]
 
 # 安全限制
 max_velocity: 3.0        # rad/s, 速率限制 (防止突变)
