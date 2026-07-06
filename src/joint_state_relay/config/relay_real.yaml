@@ -58,13 +58,13 @@ joints:
     follower_limit: [-3.14, 3.14]
     deadband: 0.005
   gripper_finger_left_joint:
-    sign: 0.0212
-    offset: 0.003619
+    sign: 0.047376
+    offset: 0.0
     leader_limit: [0, 0.944]
-    follower_limit: [0, 0.0715]
+    follower_limit: [-0.001467, 0.043265]
     deadband: 0.001
 
 # 安全限制
 max_velocity: 3.0        # rad/s, 速率限制 (防止突变)
 command_timeout: 0.1      # s, 超时后停止发送
-publish_rate: 100.0       # Hz, 桥接节点发布频率
+publish_rate: 100.0       # Hz, 桥接节点发布频率 (匹配从臂状态发布频率)

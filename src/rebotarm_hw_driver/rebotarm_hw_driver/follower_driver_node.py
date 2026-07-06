@@ -25,14 +25,25 @@ from reBotArm_control_py.dynamics import compute_generalized_gravity
 _JOINT4_GRAVITY_SCALE = 0.85
 _ZERO = np.zeros(6)
 _RETURN_DURATION = 2.0
-_KP_RETURN = 30.0
-_KD_RETURN = 3.0
-_KP_HOLD = 20.0
-_KD_HOLD = 2.0
 _ZERO_THRESHOLD = 0.015
 
-_KP_TRACK = 40.0
-_KD_TRACK = 6.0
+# joint1-3 (大电机)
+_KP_RETURN_123 = 30.0
+_KD_RETURN_123 = 3.0
+_KP_HOLD_123 = 20.0
+_KD_HOLD_123 = 2.0
+_KP_TRACK_123 = 40.0
+_KD_TRACK_123 = 6.0
+
+# joint4-6 (小电机，降低增益减少振荡)
+_KP_RETURN_456 = 15.0
+_KD_RETURN_456 = 2.0
+_KP_HOLD_456 = 10.0
+_KD_HOLD_456 = 1.5
+_KP_TRACK_456 = 20.0
+_KD_TRACK_456 = 3.0
+
+# 通用
 _KP_IDLE = 0.0
 _KD_IDLE = 1.0
 _CMD_TIMEOUT = 0.1
@@ -44,9 +55,9 @@ _CMD_TIMEOUT = 0.1
 # Prismatic: 0 m (closed) ~ 0.02 m (open)
 # Scale: -2.66 / 0.02 = -133
 _GRIPPER_POS_SCALE = -133.0
-_GRIPPER_KP = 12.0  # 降低 kp 减少振荡
-_GRIPPER_KD = 3.0   # 增加 kd 抑制振荡
-_GRIPPER_EMA_ALPHA = 0.3  # 滤波系数
+_GRIPPER_KP = 6.0   # 降低 kp 减少振荡
+_GRIPPER_KD = 1.5   # 降低 kd
+_GRIPPER_EMA_ALPHA = 0.5  # 滤波系数 (可被 ROS2 参数覆盖)
 _GRIPPER_DEADBAND = 0.0005  # 死区 (m)
 
 
@@ -91,23 +102,31 @@ class _FollowController:
         tau_g = compute_generalized_gravity(q=q)
         tau_g[3] *= _JOINT4_GRAVITY_SCALE
 
+        # 按关节设置不同的增益 (joint1-3 大电机, joint4-6 小电机)
+        kp = np.zeros(6)
+        kd = np.zeros(6)
+
         if self._returning:
             self._return_elapsed += dt
             t = min(self._return_elapsed / _RETURN_DURATION, 1.0)
             alpha = 0.5 * (1.0 - np.cos(np.pi * t))
             target = self._start_pos * (1.0 - alpha)
-            kp = np.full(6, _KP_RETURN)
-            kd = np.full(6, _KD_RETURN)
+            kp[:3] = _KP_RETURN_123
+            kp[3:] = _KP_RETURN_456
+            kd[:3] = _KD_RETURN_123
+            kd[3:] = _KD_RETURN_456
             if t >= 1.0:
                 self._return_done = True
-                kp = np.full(6, _KP_HOLD)
-                kd = np.full(6, _KD_HOLD)
+                kp[:3] = _KP_HOLD_123
+                kp[3:] = _KP_HOLD_456
+                kd[:3] = _KD_HOLD_123
+                kd[3:] = _KD_HOLD_456
         elif self._tracking:
             if time.monotonic() - self._last_cmd_time > _CMD_TIMEOUT:
                 self._tracking = False
                 target = q
-                kp = np.full(6, _KP_IDLE)
-                kd = np.full(6, _KD_IDLE)
+                kp[:] = _KP_IDLE
+                kd[:] = _KD_IDLE
             else:
                 with self._lock:
                     target = self._target_buf[1 - self._write_idx]
@@ -120,12 +139,14 @@ class _FollowController:
                     self._filtered_target = (self._EMA_ALPHA * target
                                              + (1.0 - self._EMA_ALPHA) * self._filtered_target)
                 target = self._filtered_target
-                kp = np.full(6, _KP_TRACK)
-                kd = np.full(6, _KD_TRACK)
+                kp[:3] = _KP_TRACK_123
+                kp[3:] = _KP_TRACK_456
+                kd[:3] = _KD_TRACK_123
+                kd[3:] = _KD_TRACK_456
         else:
             target = q
-            kp = np.full(6, _KP_IDLE)
-            kd = np.full(6, _KD_IDLE)
+            kp[:] = _KP_IDLE
+            kd[:] = _KD_IDLE
             self._filtered_target = None  # reset filter
 
         arm.mit(pos=target, vel=_ZERO, kp=kp, kd=kd, tau=tau_g,
@@ -135,13 +156,15 @@ class _FollowController:
 class FollowerDriverNode(Node):
     def __init__(self):
         super().__init__('rebotarm_follower_driver')
-        self.declare_parameter('rate', 50.0)
+        self.declare_parameter('rate', 100.0)
         self.declare_parameter('config_path', '')
         self.declare_parameter('enable_gripper', True)
+        self.declare_parameter('gripper_ema_alpha', _GRIPPER_EMA_ALPHA)
 
         rate = self.get_parameter('rate').value
         config_path = self.get_parameter('config_path').value
         enable_gripper = self.get_parameter('enable_gripper').value
+        self._gripper_ema_alpha = float(self.get_parameter('gripper_ema_alpha').value)
 
         kwargs = {}
         if config_path:
@@ -155,7 +178,7 @@ class FollowerDriverNode(Node):
         except Exception as e:
             self.get_logger().error(f'Motor enable failed: {e}')
             self.get_logger().error('Check: ip -s link show can0')
-            self.get_logger().error('Check: sudo ip link set can0 up type can bitrate 500000')
+            self.get_logger().error('Check: sudo ip link set can0 up type can bitrate 1000000')
             raise
 
         self.arm.mode_mit(kp=_ZERO, kd=np.full(self.arm.num_joints, 1.0))
@@ -179,7 +202,7 @@ class FollowerDriverNode(Node):
                 self._gripper = Gripper(cfg_path=gripper_cfg)
                 self._gripper.enable()
                 self._gripper.mode_mit(kp=_GRIPPER_KP, kd=_GRIPPER_KD)
-                self.get_logger().info(f'Gripper enabled (kp={_GRIPPER_KP}, kd={_GRIPPER_KD})')
+                self.get_logger().info(f'Gripper enabled (kp={_GRIPPER_KP}, kd={_GRIPPER_KD}, ema_alpha={self._gripper_ema_alpha})')
                 self.joint_names.append('gripper_finger_left_joint')
             except Exception as e:
                 self.get_logger().warn(f'Gripper init failed: {e}')
@@ -212,8 +235,8 @@ class FollowerDriverNode(Node):
 
                         # EMA 滤波
                         self._gripper_filtered_pos = (
-                            _GRIPPER_EMA_ALPHA * prismatic_pos +
-                            (1.0 - _GRIPPER_EMA_ALPHA) * self._gripper_filtered_pos
+                            self._gripper_ema_alpha * prismatic_pos +
+                            (1.0 - self._gripper_ema_alpha) * self._gripper_filtered_pos
                         )
 
                         motor_pos = self._gripper_filtered_pos * _GRIPPER_POS_SCALE

@@ -51,9 +51,9 @@ source /opt/ros/humble/setup.bash
 
 # ── CAN 总线初始化 (从臂电机需要) ──
 if [ "$MODE" = "real" ]; then
-    echo "=== Initializing CAN bus (can0, 500kbps) ==="
+    echo "=== Initializing CAN bus (can0, 1Mbps) ==="
     if ! ip link show can0 &>/dev/null; then
-        sudo ip link set can0 type can bitrate 500000 2>/dev/null || true
+        sudo ip link set can0 type can bitrate 1000000 2>/dev/null || true
     fi
     if ip link show can0 | grep -q "state DOWN"; then
         sudo ip link set can0 up
@@ -74,10 +74,13 @@ source "$RELAY_WS/install/setup.bash"
 
 if [ "$MODE" = "real" ]; then
     echo "=== Starting follower arm driver (real hardware) ==="
+    # 激活 venv 以使用 reBotArm_control_py 依赖
+    source "$RELAY_WS/.venv/bin/activate"
     # 用 setsid 创建新进程组，避免 Ctrl+C 直接发到 follower
     setsid ros2 launch rebotarm_hw_driver follower_driver.launch.py \
         use_rviz:=false output_topic:=/follower/joint_states &
     FOLLOWER_PID=$!
+    deactivate
     sleep 3
 
     echo "=== Checking follower motor status ==="
