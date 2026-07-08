@@ -1,4 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  package.xml — rebotarm_moveit_config 包描述
+
+  rebotarm_moveit_config: reBotArm B601 的 MoveIt2 运动规划配置包。
+  由 MoveIt Setup Assistant 生成，提供 URDF/SRDF/控制器/运动学等配置。
+
+  关键依赖：
+    - MoveIt2 核心: move_group, OMPL 规划器, 运动学插件, 控制器管理器
+    - ros2_control: JointTrajectoryController, JointStateBroadcaster
+    - 基础设施: robot_state_publisher, rviz2, tf2_ros, xacro
+    - rebotarm_gazebo: 提供机器人 URDF 和 mesh 文件
+-->
 <package format="3">
   <name>rebotarm_moveit_config</name>
   <version>0.1.0</version>
@@ -8,19 +20,26 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <exec_depend>moveit_ros_move_group</exec_depend>
-  <exec_depend>moveit_ros_visualization</exec_depend>
-  <exec_depend>moveit_planners_ompl</exec_depend>
-  <exec_depend>moveit_simple_controller_manager</exec_depend>
-  <exec_depend>moveit_configs_utils</exec_depend>
-  <exec_depend>moveit_kinematics</exec_depend>
-  <exec_depend>joint_state_broadcaster</exec_depend>
-  <exec_depend>joint_trajectory_controller</exec_depend>
-  <exec_depend>robot_state_publisher</exec_depend>
-  <exec_depend>rviz2</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>xacro</exec_depend>
-  <exec_depend>rebotarm_gazebo</exec_depend>
+  <!-- MoveIt2 核心组件 -->
+  <exec_depend>moveit_ros_move_group</exec_depend>          <!-- move_group 运动规划节点 -->
+  <exec_depend>moveit_ros_visualization</exec_depend>       <!-- RViz MoveIt 插件 -->
+  <exec_depend>moveit_planners_ompl</exec_depend>           <!-- OMPL 运动规划器 -->
+  <exec_depend>moveit_simple_controller_manager</exec_depend> <!-- 控制器管理器 -->
+  <exec_depend>moveit_configs_utils</exec_depend>           <!-- 配置加载工具 -->
+  <exec_depend>moveit_kinematics</exec_depend>              <!-- 运动学求解器（KDL） -->
+
+  <!-- ros2_control 控制器 -->
+  <exec_depend>joint_state_broadcaster</exec_depend>        <!-- 关节状态广播器 -->
+  <exec_depend>joint_trajectory_controller</exec_depend>    <!-- 关节轨迹控制器 -->
+
+  <!-- ROS2 基础设施 -->
+  <exec_depend>robot_state_publisher</exec_depend>          <!-- TF 变换发布 -->
+  <exec_depend>rviz2</exec_depend>                          <!-- 可视化工具 -->
+  <exec_depend>tf2_ros</exec_depend>                        <!-- TF2 库 -->
+  <exec_depend>xacro</exec_depend>                          <!-- URDF xacro 处理 -->
+
+  <!-- 机器人描述来源 -->
+  <exec_depend>rebotarm_gazebo</exec_depend>                <!-- URDF + mesh 文件 -->
 
   <export>
     <build_type>ament_cmake</build_type>

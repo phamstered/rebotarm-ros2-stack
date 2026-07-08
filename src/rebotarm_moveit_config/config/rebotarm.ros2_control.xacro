@@ -1,9 +1,38 @@
 <?xml version="1.0"?>
+<!--
+  rebotarm.ros2_control.xacro — ros2_control 硬件接口定义
+
+  职责：
+    定义每个关节的 command/state 接口，供 ros2_control 框架使用。
+
+  硬件插件：
+    mock_components/GenericSystem — 纯仿真模式，无真实硬件通信
+    实际硬件驱动（rebotarm_hw_driver）会用自己的 hardware interface 替代此配置
+
+  接口说明：
+    - command_interface: position（位置控制，带 min/max 限位）
+    - state_interface:  position（当前位置，初始值 0.0）+ velocity（当前速度）
+
+  关节限位（弧度）：
+    joint1:  [-2.8,   2.8  ]  底座旋转
+    joint2:  [-3.14,  0.0  ]  肩部
+    joint3:  [-3.14,  0.0  ]  肘部
+    joint4:  [-1.87,  1.57 ]  腕部俯仰
+    joint5:  [-1.57,  1.57 ]  腕部旋转
+    joint6:  [-3.14,  3.14 ]  末端旋转
+    gripper: [0.0,    0.0715]  夹爪开合（米，prismatic 关节）
+
+  注意：
+    gripper_finger_left_joint 在此定义但不在 MoveIt 规划组中，
+    夹爪需要独立于机械臂运动规划单独控制。
+-->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <ros2_control name="GazeboSimSystem" type="system">
     <hardware>
       <plugin>mock_components/GenericSystem</plugin>
     </hardware>
+
+    <!-- 通用关节接口宏：为每个关节声明 position 命令接口和 position+velocity 状态接口 -->
     <xacro:macro name="joint_interface" params="name lower upper">
       <joint name="${name}">
         <command_interface name="position">
@@ -16,12 +45,16 @@
         <state_interface name="velocity"/>
       </joint>
     </xacro:macro>
+
+    <!-- 6 自由度机械臂关节 -->
     <xacro:joint_interface name="joint1" lower="-2.8" upper="2.8"/>
     <xacro:joint_interface name="joint2" lower="-3.14" upper="0.0"/>
     <xacro:joint_interface name="joint3" lower="-3.14" upper="0.0"/>
     <xacro:joint_interface name="joint4" lower="-1.87" upper="1.57"/>
     <xacro:joint_interface name="joint5" lower="-1.57" upper="1.57"/>
     <xacro:joint_interface name="joint6" lower="-3.14" upper="3.14"/>
+
+    <!-- 夹爪（prismatic 直线关节，单位：米） -->
     <xacro:joint_interface name="gripper_finger_left_joint" lower="0" upper="0.0715"/>
   </ros2_control>
 </robot>

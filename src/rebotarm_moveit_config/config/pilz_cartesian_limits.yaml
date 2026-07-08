@@ -1,4 +1,27 @@
+# pilz_cartesian_limits.yaml — Pilz 工业运动规划器笛卡尔空间限制
+#
+# 用途：
+#   配置 PilzIndustrialMotionPlanner 的笛卡尔空间运动限制。
+#   Pilz 规划器适用于直线运动（LIN）和圆弧运动（CIRC）等工业轨迹。
+#
+# 参数说明：
+#   default_velocity_scaling_factor: 0.3 — 默认速度缩放（30%）
+#   default_acceleration_scaling_factor: 0.3 — 默认加速度缩放（30%）
+#   max_cartesian_speed: 0.5 m/s — 笛卡尔空间最大线速度
+#
+#   cartesian_limits:
+#     max_trans_vel: 0.5 m/s — 最大平移速度
+#     max_trans_acc: 0.5 m/s² — 最大平移加速度
+#     max_trans_dec: 0.5 m/s² — 最大平移减速度
+#     max_rot_vel: 1.0 rad/s — 最大旋转速度
+
 default_velocity_scaling_factor: 0.3
 default_acceleration_scaling_factor: 0.3
 
 max_cartesian_speed: 0.5
+
+cartesian_limits:
+  max_trans_vel: 0.5
+  max_trans_acc: 0.5
+  max_trans_dec: 0.5
+  max_rot_vel: 1.0

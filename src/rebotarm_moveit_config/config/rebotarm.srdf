@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  rebotarm.srdf — 语义机器人描述文件 (Semantic Robot Description Format)
+
+  职责：
+    定义 MoveIt 规划所需的语义信息，包括：
+    - 规划组（planning group）的关节组成
+    - 预定义姿态（named poses）
+    - 末端执行器（end effector）
+    - 虚拟关节（virtual joint）
+    - 碰撞免检对（collision disabling matrix）
+
+  由 MoveIt Setup Assistant 自动生成，可手动编辑补充。
+-->
 <robot name="rebotarm">
+
+  <!-- ==================== 规划组 ==================== -->
+  <!-- "arm" 组：包含 6 个旋转关节，用于运动规划 -->
   <group name="arm">
     <joint name="joint1"/>
     <joint name="joint2"/>
@@ -8,6 +24,9 @@
     <joint name="joint5"/>
     <joint name="joint6"/>
   </group>
+
+  <!-- ==================== 预定义姿态 ==================== -->
+  <!-- home: 所有关节归零，机械臂直立姿态 -->
   <group_state name="home" group="arm">
     <joint name="joint1" value="0"/>
     <joint name="joint2" value="0"/>
@@ -16,6 +35,8 @@
     <joint name="joint5" value="0"/>
     <joint name="joint6" value="0"/>
   </group_state>
+
+  <!-- forward: 前伸姿态，肩部 -90°、肘部 +90°，其余归零 -->
   <group_state name="forward" group="arm">
     <joint name="joint1" value="0"/>
     <joint name="joint2" value="-1.57"/>
@@ -24,22 +45,33 @@
     <joint name="joint5" value="0"/>
     <joint name="joint6" value="0"/>
   </group_state>
+
+  <!-- ==================== 末端执行器 ==================== -->
+  <!-- end_effector: 固定在 link6 上，属于 arm 规划组 -->
   <end_effector name="end_effector" parent_link="link6" group="arm"/>
+
+  <!-- ==================== 虚拟关节 ==================== -->
+  <!-- 将 base_link 固定到 world 坐标系，锚定机器人在规划场景中的位置 -->
   <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
+
+  <!-- ==================== 碰撞免检对 ==================== -->
+  <!-- 相邻连杆对（Adjacent）：物理上不可能碰撞，跳过检测以提升性能 -->
   <disable_collisions link1="base_link" link2="link1" reason="Adjacent"/>
-  <disable_collisions link1="base_link" link2="link2" reason="Never"/>
-  <disable_collisions link1="base_link" link2="link3" reason="Never"/>
   <disable_collisions link1="link1" link2="link2" reason="Adjacent"/>
-  <disable_collisions link1="link1" link2="link3" reason="Never"/>
   <disable_collisions link1="link2" link2="link3" reason="Adjacent"/>
-  <disable_collisions link1="link2" link2="link4" reason="Never"/>
   <disable_collisions link1="link3" link2="link4" reason="Adjacent"/>
-  <disable_collisions link1="link3" link2="link5" reason="Never"/>
-  <disable_collisions link1="link3" link2="link6" reason="Never"/>
   <disable_collisions link1="link4" link2="link5" reason="Adjacent"/>
-  <disable_collisions link1="link4" link2="link6" reason="Never"/>
   <disable_collisions link1="link5" link2="link6" reason="Adjacent"/>
   <disable_collisions link1="link6" link2="gripper_link" reason="Adjacent"/>
   <disable_collisions link1="gripper_link" link2="gripper_finger_left" reason="Adjacent"/>
   <disable_collisions link1="gripper_link" link2="gripper_finger_right" reason="Adjacent"/>
+
+  <!-- 非相邻但几何上不可能碰撞的连杆对（Never） -->
+  <disable_collisions link1="base_link" link2="link2" reason="Never"/>
+  <disable_collisions link1="base_link" link2="link3" reason="Never"/>
+  <disable_collisions link1="link1" link2="link3" reason="Never"/>
+  <disable_collisions link1="link2" link2="link4" reason="Never"/>
+  <disable_collisions link1="link3" link2="link5" reason="Never"/>
+  <disable_collisions link1="link3" link2="link6" reason="Never"/>
+  <disable_collisions link1="link4" link2="link6" reason="Never"/>
 </robot>

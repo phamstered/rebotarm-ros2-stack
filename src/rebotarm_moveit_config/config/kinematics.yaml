@@ -1,3 +1,19 @@
+# kinematics.yaml — 运动学求解器配置
+#
+# 用途：
+#   配置 arm 规划组的逆运动学 (IK) 求解器。
+#
+# 求解器：KDL (Kinematics and Dynamics Library)
+#   - 数值迭代求解器，通用性强，适用于任意运动链
+#   - 不依赖解析解，适用于任意构型的机器人
+#
+# 参数说明：
+#   kinematics_solver_search_resolution: 0.005 rad
+#     - 关节空间搜索分辨率，影响解的精度
+#   kinematics_solver_timeout: 0.05 秒
+#     - 单次 IK 求解超时时间，超时返回失败
+#     - 对实时跟随场景，超时需足够短以避免阻塞
+
 arm:
   kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
   kinematics_solver_search_resolution: 0.005

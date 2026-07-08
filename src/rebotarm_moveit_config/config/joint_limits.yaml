@@ -1,3 +1,20 @@
+# joint_limits.yaml — MoveIt 关节速度/加速度限制配置
+#
+# 用途：
+#   MoveIt 运动规划时的速度和加速度缩放因子，以及各关节的物理极限。
+#
+# 缩放因子：
+#   default_velocity_scaling_factor: 0.3 — 规划速度为最大速度的 30%（保守值，安全优先）
+#   default_acceleration_scaling_factor: 0.3 — 规划加速度为最大加速度的 30%
+#
+# 关节速度限制（rad/s）：
+#   joint1-3（底座/肩/肘）: 50 rad/s
+#   joint4-6（腕部）:       200 rad/s（腕部关节惯量小，可更高速）
+#
+# 注意：
+#   has_acceleration_limits 全部为 false，表示不启用加速度限制。
+#   如需更平滑的运动，可开启加速度限制并设置合理值。
+
 default_velocity_scaling_factor: 0.3
 default_acceleration_scaling_factor: 0.3
 

@@ -1,3 +1,25 @@
+# ros2_controllers.yaml — ros2_control 控制器配置
+#
+# 用途：
+#   定义 ros2_control 框架中运行的控制器，由 controller_manager 管理。
+#
+# controller_manager:
+#   update_rate: 100 Hz — 控制环更新频率
+#
+# 控制器列表：
+#
+# 1. arm_controller (JointTrajectoryController)
+#    - 控制 joint1 ~ joint6
+#    - 命令接口: position（位置控制）
+#    - 状态接口: position + velocity
+#    - state_publish_rate: 50 Hz — 关节状态发布频率
+#    - action_monitor_rate: 20 Hz — action 目标监控频率
+#    - allow_partial_joints_goal: false — 必须指定全部 6 个关节的目标值
+#
+# 2. joint_state_broadcaster (JointStateBroadcaster)
+#    - 广播 joint1 ~ joint6 的 position 和 velocity 状态
+#    - 发布到 /joint_states 话题，供 RViz/TF 等使用
+
 controller_manager:
   ros__parameters:
     update_rate: 100

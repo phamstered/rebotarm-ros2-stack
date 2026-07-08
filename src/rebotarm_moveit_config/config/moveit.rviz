@@ -1,0 +1,122 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+
+Visualization Manager:
+  Class: ""
+  Displays:
+    # ---- 参考坐标系 ----
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Value: true
+      Cell Size: 0.1
+      Color: 160; 160; 160
+      Line Style:
+        Line Width: 0.03
+        Value: Lines
+      Normal Cell Count: 0
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Plane: XY
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+
+    # ---- 机器人模型（从 /robot_description 加载） ----
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Value: true
+      Alpha: 1
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Visual Enabled: true
+
+    # ---- TF 变换可视化 ----
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: false
+      Value: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+      Marker Scale: 0.5
+      Show Arrows: true
+      Show Axes: true
+      Show Names: true
+
+    # ---- MoveIt 运动规划插件 ----
+    - Class: moveit_rviz_plugin/MotionPlanning
+      Name: MotionPlanning
+      Enabled: true
+      Value: true
+      Query Goal State:
+        Value: true
+      Query Start State:
+        Value: true
+      Planned Path:
+        Robot Alpha: 1
+        Show Robot Collision: false
+        Show Robot Visual: true
+      Planning Scene:
+        Scene Alpha: 0.9
+        Show Scene Robot: true
+        Scene Color: 255; 255; 255
+
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: base_link
+    Frame Rate: 30
+
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+    - Class: rviz_default_plugins/SetInitialPose
+      Theta std deviation: 0.2617994
+      Topic:
+        Value: /initialpose
+      X std deviation: 0.5
+      Y std deviation: 0.5
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Value: /goal_pose
+
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 2.5
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.3
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.5
+      Target Frame: <Fixed Frame>
+      Yaw: 3.14
+
+Window Geometry:
+  Displays:
+    collapsed: false
+  MotionPlanning:
+    collapsed: false
+  Width: 1200
+  Height: 800

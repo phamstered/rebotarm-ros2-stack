@@ -1,5 +1,19 @@
 <?xml version="1.0"?>
+<!--
+  rebotarm_moveit.urdf.xacro — MoveIt 顶层 URDF 入口
+
+  职责：
+    1. 引入 rebotarm_gazebo 包中的完整机器人模型（links/joints/meshes/碰撞体）
+    2. 引入 ros2_control 硬件接口描述（mock_components/GenericSystem）
+
+  注意：
+    - 机器人的物理描述（URDF + mesh）实际存放在 rebotarm_gazebo 包中
+    - 此文件仅做组合，不定义任何 link/joint
+    - rsp.launch.py 会将 package:// 路径替换为绝对路径以确保 mesh 可被找到
+-->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm">
+  <!-- 机器人本体 URDF（link/joint/visual/collision/mesh） -->
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
+  <!-- ros2_control 硬件接口定义（mock 仿真模式） -->
   <xacro:include filename="$(find rebotarm_moveit_config)/config/rebotarm.ros2_control.xacro"/>
 </robot>

@@ -1,3 +1,20 @@
+# moveit_controllers.yaml — MoveIt 控制器管理器配置
+#
+# 用途：
+#   告诉 MoveIt 如何与 ros2_control 控制器对接，用于轨迹执行。
+#
+# 控制器管理器：MoveItSimpleControllerManager
+#   - 最简单的控制器管理器，直接通过 action 接口发送轨迹
+#
+# arm_controller:
+#   - 类型: FollowJointTrajectory（标准轨迹跟踪 action）
+#   - 控制 joint1 ~ joint6（6 自由度臂）
+#   - action 命名空间: follow_joint_trajectory
+#     对应 ros2_control 中 JointTrajectoryController 的 action 接口
+#
+# 注意：
+#   夹爪不在此配置中，需要独立控制。
+
 moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
 
 moveit_simple_controller_manager:
