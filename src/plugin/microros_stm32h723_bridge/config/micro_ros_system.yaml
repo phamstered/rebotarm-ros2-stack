@@ -1,0 +1,12 @@
+command_topic: /stm32/joint_commands
+state_topic: /stm32/joint_states
+status_topic: /stm32/status
+state_timeout_ms: 100
+activation_timeout_ms: 3000
+return_duration_ms: 3000
+required_joint_mask: "0x7f"
+joint4_gravity_scale: 0.85
+
+# Serial settings are consumed by the launch file and micro-ROS Agent, not the plugin.
+serial_device: /dev/ttyACM0
+baudrate: 921600

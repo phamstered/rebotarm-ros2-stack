@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm">
+  <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/mit_gains.yaml"/>
+  <xacro:arg name="model_urdf_path" default="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
+  <xacro:arg name="required_joint_mask" default="0x7f"/>
+
+  <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
+
+  <ros2_control name="Stm32H723System" type="system">
+    <hardware>
+      <plugin>microros_stm32h723_bridge/MicroRosSystem</plugin>
+      <param name="command_topic">/stm32/joint_commands</param>
+      <param name="state_topic">/stm32/joint_states</param>
+      <param name="status_topic">/stm32/status</param>
+      <param name="state_timeout_ms">100</param>
+      <param name="activation_timeout_ms">3000</param>
+      <param name="return_duration_ms">3000</param>
+      <param name="zero_tolerance">0.03</param>
+      <param name="required_joint_mask">$(arg required_joint_mask)</param>
+      <param name="gains_file">$(arg gains_file)</param>
+      <param name="model_urdf_path">$(arg model_urdf_path)</param>
+      <param name="joint4_gravity_scale">0.85</param>
+    </hardware>
+
+    <xacro:macro name="stm32_joint" params="name lower upper">
+      <joint name="${name}">
+        <command_interface name="position">
+          <param name="min">${lower}</param>
+          <param name="max">${upper}</param>
+        </command_interface>
+        <state_interface name="position"/>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+    </xacro:macro>
+
+    <xacro:stm32_joint name="joint1" lower="-2.8" upper="2.8"/>
+    <xacro:stm32_joint name="joint2" lower="-3.14" upper="0.0"/>
+    <xacro:stm32_joint name="joint3" lower="-3.14" upper="0.0"/>
+    <xacro:stm32_joint name="joint4" lower="-1.87" upper="1.57"/>
+    <xacro:stm32_joint name="joint5" lower="-1.57" upper="1.57"/>
+    <xacro:stm32_joint name="joint6" lower="-3.14" upper="3.14"/>
+    <xacro:stm32_joint name="gripper_finger_left_joint" lower="0.0" upper="0.0715"/>
+  </ros2_control>
+</robot>

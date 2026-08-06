@@ -1,0 +1,16 @@
+return:
+  kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 6.0]
+  kd: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 1.5]
+hold:
+  kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0, 6.0]
+  kd: [2.0, 2.0, 2.0, 1.5, 1.5, 1.5, 1.5]
+track:
+  kp: [40.0, 40.0, 40.0, 20.0, 20.0, 20.0, 6.0]
+  kd: [6.0, 6.0, 6.0, 3.0, 3.0, 3.0, 1.5]
+idle:
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+# Joint-side generalized effort limits: joint1-6 in N*m, gripper in N.
+# Conservative placeholders; validate against the actuator and transmission data.
+effort_limits: [5.0, 5.0, 5.0, 3.0, 3.0, 3.0, 10.0]

@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="microros_stm32h723_bridge_hardware">
+  <class
+    name="microros_stm32h723_bridge/MicroRosSystem"
+    type="microros_stm32h723_bridge::MicroRosSystem"
+    base_class_type="hardware_interface::SystemInterface">
+    <description>STM32H723 micro-ROS MIT-control hardware system.</description>
+  </class>
+</library>
