@@ -22,6 +22,10 @@ ros2 run microros_stm32h723_bridge mock_stm32_node.py
 ros2 launch microros_stm32h723_bridge stm32h723_bridge.launch.py start_agent:=false
 ```
 
+The launch file defaults to `start_agent:=false` because real deployments use
+the systemd-managed Agent. Never start both processes against the same serial
+device.
+
 Before deactivating the hardware, request a safe stop:
 
 ```bash
@@ -40,3 +44,21 @@ ros2 run microros_stm32h723_bridge single_motor_smoke_test.py \
 ```
 
 The tool refuses targets outside ±0.10 rad, gains above its conservative smoke-test limits, and any firmware status whose active mask is not exactly `0x01`. Keep the motor unloaded and retain a physical emergency stop.
+
+## Single-joint ros2_control
+
+After the topic-level smoke test passes, start the dedicated joint1 profile while
+the systemd Agent is running:
+
+```bash
+ros2 launch microros_stm32h723_bridge stm32h723_single_joint.launch.py
+ros2 control list_hardware_interfaces
+ros2 control list_controllers
+```
+
+This profile requires firmware `active_joint_mask=0x01`, exports only
+`joint1/position`, accepts a one-name `JointState`, disables gravity
+compensation, and writes zeros to all six inactive protocol slots. It must not
+be used if any other motor channel is enabled. The profile uses the dedicated
+`single_joint_mit_gains.yaml` limits: HOLD kp/kd 2.0/0.2, TRACK 5.0/0.5,
+joint1 effort limit 1.0, and zero gains/effort for every inactive slot.

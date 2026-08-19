@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -35,6 +36,22 @@ std::string parameter_or(
   return item == info.hardware_parameters.end() ? fallback : item->second;
 }
 
+bool bool_parameter_or(
+  const hardware_interface::HardwareInfo & info, const std::string & key, bool fallback)
+{
+  const auto item = info.hardware_parameters.find(key);
+  if (item == info.hardware_parameters.end()) {
+    return fallback;
+  }
+  if (item->second == "true" || item->second == "1") {
+    return true;
+  }
+  if (item->second == "false" || item->second == "0") {
+    return false;
+  }
+  throw std::invalid_argument("invalid boolean hardware parameter: " + key);
+}
+
 }  // namespace
 
 MicroRosSystem::~MicroRosSystem()
@@ -50,19 +67,28 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
   {
     return hardware_interface::CallbackReturn::ERROR;
   }
-  if (info_.joints.size() != kJointCount) {
-    RCLCPP_ERROR(rclcpp::get_logger("MicroRosSystem"), "Expected 7 joints, got %zu", info_.joints.size());
+  if (info_.joints.empty() || info_.joints.size() > kJointCount) {
+    RCLCPP_ERROR(
+      rclcpp::get_logger("MicroRosSystem"), "Expected 1 to 7 joints, got %zu",
+      info_.joints.size());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
   try {
-    joint_names_.reserve(kJointCount);
-    for (std::size_t i = 0; i < kJointCount; ++i) {
-      const auto & joint = info_.joints[i];
-      if (joint.name != kProtocolJointNames[i]) {
-        throw std::runtime_error(
-                "joint order must match the fixed STM32 protocol; expected " +
-                std::string(kProtocolJointNames[i]) + " at index " + std::to_string(i));
+    joint_names_.reserve(info_.joints.size());
+    configured_protocol_indices_.reserve(info_.joints.size());
+    for (const auto & joint : info_.joints) {
+      const auto protocol_item = std::find_if(
+        kProtocolJointNames.begin(), kProtocolJointNames.end(),
+        [&joint](const char * name) {return joint.name == name;});
+      if (protocol_item == kProtocolJointNames.end()) {
+        throw std::runtime_error("joint is not part of the fixed STM32 protocol: " + joint.name);
+      }
+      const auto protocol_index = static_cast<std::size_t>(
+        std::distance(kProtocolJointNames.begin(), protocol_item));
+      const uint32_t protocol_bit = 1U << protocol_index;
+      if ((configured_joint_mask_ & protocol_bit) != 0U) {
+        throw std::runtime_error("duplicate hardware joint: " + joint.name);
       }
       if (joint.command_interfaces.size() != 1 ||
         joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION)
@@ -82,8 +108,10 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
         }
       }
       joint_names_.push_back(joint.name);
-      lower_limits_[i] = std::stod(joint.command_interfaces[0].min);
-      upper_limits_[i] = std::stod(joint.command_interfaces[0].max);
+      configured_protocol_indices_.push_back(protocol_index);
+      configured_joint_mask_ |= protocol_bit;
+      lower_limits_[protocol_index] = std::stod(joint.command_interfaces[0].min);
+      upper_limits_[protocol_index] = std::stod(joint.command_interfaces[0].max);
     }
 
     command_topic_ = parameter_or(info_, "command_topic", command_topic_);
@@ -97,6 +125,11 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       static_cast<int64_t>(parameter_or(info_, "return_duration_ms", 3000.0)));
     required_joint_mask_ = static_cast<uint32_t>(
       std::stoul(parameter_or(info_, "required_joint_mask", "0x7f"), nullptr, 0));
+    if (required_joint_mask_ != configured_joint_mask_) {
+      throw std::runtime_error(
+              "required_joint_mask must exactly match joints exported by ros2_control");
+    }
+    gravity_enabled_ = bool_parameter_or(info_, "enable_gravity_compensation", true);
     zero_tolerance_ = parameter_or(info_, "zero_tolerance", 0.03);
 
     if (!load_gains(parameter_or(info_, "gains_file", ""))) {
@@ -110,9 +143,11 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       effort_limits_[i] = effort_node[i].as<double>();
     }
 
-    gravity_.initialize(
-      parameter_or(info_, "model_urdf_path", ""), joint_names_,
-      parameter_or(info_, "joint4_gravity_scale", 0.85));
+    if (gravity_enabled_) {
+      gravity_.initialize(
+        parameter_or(info_, "model_urdf_path", ""), joint_names_,
+        parameter_or(info_, "joint4_gravity_scale", 0.85));
+    }
 
     node_ = std::make_shared<rclcpp::Node>("microros_stm32h723_hardware");
     const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
@@ -138,11 +173,15 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
 std::vector<hardware_interface::StateInterface> MicroRosSystem::export_state_interfaces()
 {
   std::vector<hardware_interface::StateInterface> interfaces;
-  interfaces.reserve(kJointCount * 3);
-  for (std::size_t i = 0; i < kJointCount; ++i) {
-    interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &state_position_[i]);
-    interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_VELOCITY, &state_velocity_[i]);
-    interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_EFFORT, &state_effort_[i]);
+  interfaces.reserve(joint_names_.size() * 3);
+  for (std::size_t i = 0; i < joint_names_.size(); ++i) {
+    const auto protocol_index = configured_protocol_indices_[i];
+    interfaces.emplace_back(
+      joint_names_[i], hardware_interface::HW_IF_POSITION, &state_position_[protocol_index]);
+    interfaces.emplace_back(
+      joint_names_[i], hardware_interface::HW_IF_VELOCITY, &state_velocity_[protocol_index]);
+    interfaces.emplace_back(
+      joint_names_[i], hardware_interface::HW_IF_EFFORT, &state_effort_[protocol_index]);
   }
   return interfaces;
 }
@@ -150,9 +189,12 @@ std::vector<hardware_interface::StateInterface> MicroRosSystem::export_state_int
 std::vector<hardware_interface::CommandInterface> MicroRosSystem::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> interfaces;
-  interfaces.reserve(kJointCount);
-  for (std::size_t i = 0; i < kJointCount; ++i) {
-    interfaces.emplace_back(joint_names_[i], hardware_interface::HW_IF_POSITION, &command_position_[i]);
+  interfaces.reserve(joint_names_.size());
+  for (std::size_t i = 0; i < joint_names_.size(); ++i) {
+    const auto protocol_index = configured_protocol_indices_[i];
+    interfaces.emplace_back(
+      joint_names_[i], hardware_interface::HW_IF_POSITION,
+      &command_position_[protocol_index]);
   }
   return interfaces;
 }
@@ -170,8 +212,13 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
   state_position_ = feedback_.position;
   state_velocity_ = feedback_.velocity;
   state_effort_ = feedback_.effort;
-  command_position_ = state_position_;
+  command_position_.fill(0.0);
+  for (const auto protocol_index : configured_protocol_indices_) {
+    command_position_[protocol_index] = state_position_[protocol_index];
+  }
   command_velocity_.fill(0.0);
+  safe_stop_requested_.store(false);
+  disable_sequence_ = 0;
   command_mode_.store(msg::JointCommand::MODE_HOLD);
   active_.store(true);
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -218,8 +265,9 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     RCLCPP_ERROR(node_->get_logger(), "Rejected non-finite position command");
     return hardware_interface::return_type::ERROR;
   }
-  for (std::size_t i = 0; i < kJointCount; ++i) {
-    targets[i] = std::clamp(targets[i], lower_limits_[i], upper_limits_[i]);
+  for (const auto protocol_index : configured_protocol_indices_) {
+    targets[protocol_index] = std::clamp(
+      targets[protocol_index], lower_limits_[protocol_index], upper_limits_[protocol_index]);
   }
 
   if (safe_stop_requested_.load()) {
@@ -232,26 +280,35 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     const double alpha = std::clamp(
       std::chrono::duration<double>(elapsed).count() /
       std::chrono::duration<double>(return_duration_).count(), 0.0, 1.0);
-    for (std::size_t i = 0; i < kJointCount; ++i) {
-      targets[i] = return_start_[i] * (1.0 - alpha);
+    for (const auto protocol_index : configured_protocol_indices_) {
+      targets[protocol_index] = return_start_[protocol_index] * (1.0 - alpha);
     }
-    const bool at_zero = std::all_of(
-      state_position_.begin(), state_position_.end(),
-      [this](double value) {return std::abs(value) <= zero_tolerance_;});
-    if (alpha >= 1.0 && at_zero) {
+    if (alpha >= 1.0 && configured_joints_at_zero()) {
       command_mode_.store(msg::JointCommand::MODE_DISABLE);
     }
-  } else if (command_mode_.load() == msg::JointCommand::MODE_HOLD && targets != state_position_) {
+  } else if (
+    command_mode_.load() == msg::JointCommand::MODE_HOLD &&
+    configured_positions_differ(targets, state_position_))
+  {
     command_mode_.store(msg::JointCommand::MODE_TRACK);
   }
 
-  std::vector<double> positions(state_position_.begin(), state_position_.end());
-  std::vector<double> gravity_effort;
-  try {
-    gravity_effort = gravity_.compute(positions);
-  } catch (const std::exception & error) {
-    RCLCPP_ERROR(node_->get_logger(), "Gravity computation failed: %s", error.what());
-    return hardware_interface::return_type::ERROR;
+  std::array<double, kJointCount> gravity_effort{};
+  if (gravity_enabled_) {
+    std::vector<double> configured_positions;
+    configured_positions.reserve(configured_protocol_indices_.size());
+    for (const auto protocol_index : configured_protocol_indices_) {
+      configured_positions.push_back(state_position_[protocol_index]);
+    }
+    try {
+      const auto configured_effort = gravity_.compute(configured_positions);
+      for (std::size_t i = 0; i < configured_effort.size(); ++i) {
+        gravity_effort[configured_protocol_indices_[i]] = configured_effort[i];
+      }
+    } catch (const std::exception & error) {
+      RCLCPP_ERROR(node_->get_logger(), "Gravity computation failed: %s", error.what());
+      return hardware_interface::return_type::ERROR;
+    }
   }
 
   msg::JointCommand message;
@@ -267,6 +324,15 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
   }
   const auto & gains = selected_gains();
   for (std::size_t i = 0; i < kJointCount; ++i) {
+    const bool configured = (configured_joint_mask_ & (1U << i)) != 0U;
+    if (!configured) {
+      message.position[i] = 0.0F;
+      message.velocity[i] = 0.0F;
+      message.kp[i] = 0.0F;
+      message.kd[i] = 0.0F;
+      message.effort[i] = 0.0F;
+      continue;
+    }
     message.position[i] = static_cast<float>(targets[i]);
     message.velocity[i] = static_cast<float>(command_velocity_[i]);
     message.kp[i] = static_cast<float>(gains.kp[i]);
@@ -281,8 +347,10 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
 
 void MicroRosSystem::joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr message)
 {
-  if (message->name.size() != kJointCount || message->position.size() != kJointCount ||
-    message->velocity.size() != kJointCount || message->effort.size() != kJointCount)
+  if (message->name.size() < joint_names_.size() ||
+    message->position.size() != message->name.size() ||
+    message->velocity.size() != message->name.size() ||
+    message->effort.size() != message->name.size())
   {
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "Ignoring incomplete JointState");
     return;
@@ -292,14 +360,15 @@ void MicroRosSystem::joint_state_callback(const sensor_msgs::msg::JointState::Sh
     indices.emplace(message->name[i], i);
   }
   Feedback next;
-  for (std::size_t i = 0; i < kJointCount; ++i) {
+  for (std::size_t i = 0; i < joint_names_.size(); ++i) {
     const auto item = indices.find(joint_names_[i]);
     if (item == indices.end()) {
       return;
     }
-    next.position[i] = message->position[item->second];
-    next.velocity[i] = message->velocity[item->second];
-    next.effort[i] = message->effort[item->second];
+    const auto protocol_index = configured_protocol_indices_[i];
+    next.position[protocol_index] = message->position[item->second];
+    next.velocity[protocol_index] = message->velocity[item->second];
+    next.effort[protocol_index] = message->effort[item->second];
   }
   if (!all_finite(next.position) || !all_finite(next.velocity) || !all_finite(next.effort)) {
     return;
@@ -383,6 +452,22 @@ bool MicroRosSystem::load_gains(const std::string & path)
 bool MicroRosSystem::all_finite(const std::array<double, kJointCount> & values) const
 {
   return std::all_of(values.begin(), values.end(), [](double value) {return std::isfinite(value);});
+}
+
+bool MicroRosSystem::configured_positions_differ(
+  const std::array<double, kJointCount> & lhs,
+  const std::array<double, kJointCount> & rhs) const
+{
+  return std::any_of(
+    configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
+    [&lhs, &rhs](std::size_t index) {return lhs[index] != rhs[index];});
+}
+
+bool MicroRosSystem::configured_joints_at_zero() const
+{
+  return std::all_of(
+    configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
+    [this](std::size_t index) {return std::abs(state_position_[index]) <= zero_tolerance_;});
 }
 
 const MicroRosSystem::Gains & MicroRosSystem::selected_gains() const

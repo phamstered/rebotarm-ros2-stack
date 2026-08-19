@@ -66,12 +66,16 @@ class MockStm32Node(Node):
                 for current, target in zip(self._positions, self._target)
             ]
         now = self.get_clock().now().to_msg()
+        active_indices = [
+            index for index in range(7)
+            if self._active_joint_mask & (1 << index)
+        ]
         state = JointState()
         state.header.stamp = now
-        state.name = JOINT_NAMES
-        state.position = self._positions
-        state.velocity = [0.0] * 7
-        state.effort = [0.0] * 7
+        state.name = [JOINT_NAMES[index] for index in active_indices]
+        state.position = [self._positions[index] for index in active_indices]
+        state.velocity = [0.0] * len(active_indices)
+        state.effort = [0.0] * len(active_indices)
         self._state_pub.publish(state)
 
         status = HardwareStatus()

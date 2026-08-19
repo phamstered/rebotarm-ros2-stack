@@ -70,6 +70,10 @@ private:
   void stop_executor();
   bool load_gains(const std::string & path);
   bool all_finite(const std::array<double, kJointCount> & values) const;
+  bool configured_positions_differ(
+    const std::array<double, kJointCount> & lhs,
+    const std::array<double, kJointCount> & rhs) const;
+  bool configured_joints_at_zero() const;
   const Gains & selected_gains() const;
 
   std::array<double, kJointCount> state_position_{};
@@ -103,6 +107,7 @@ private:
 
   GravityCompensation gravity_;
   std::vector<std::string> joint_names_;
+  std::vector<std::size_t> configured_protocol_indices_;
   std::atomic<uint8_t> command_mode_{msg::JointCommand::MODE_HOLD};
   std::atomic<bool> active_{false};
   std::atomic<bool> required_joints_active_{false};
@@ -114,6 +119,8 @@ private:
   uint32_t sequence_{0};
   uint32_t disable_sequence_{0};
   uint32_t required_joint_mask_{0x7FU};
+  uint32_t configured_joint_mask_{0U};
+  bool gravity_enabled_{true};
   double zero_tolerance_{0.03};
   std::string command_topic_{"/stm32/joint_commands"};
   std::string state_topic_{"/stm32/joint_states"};

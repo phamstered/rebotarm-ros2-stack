@@ -5,6 +5,7 @@
 #include <pinocchio/parsers/urdf.hpp>
 
 #include <Eigen/Core>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -17,6 +18,7 @@ public:
   pinocchio::Model model;
   std::unique_ptr<pinocchio::Data> data;
   std::vector<pinocchio::JointIndex> model_joint_ids;
+  std::size_t joint4_hardware_index{std::numeric_limits<std::size_t>::max()};
   double joint4_scale{0.85};
   bool ready{false};
 };
@@ -40,9 +42,13 @@ void GravityCompensation::initialize(
   pinocchio::urdf::buildModel(urdf_path, impl_->model);
   impl_->data = std::make_unique<pinocchio::Data>(impl_->model);
   impl_->model_joint_ids.clear();
+  impl_->joint4_hardware_index = std::numeric_limits<std::size_t>::max();
   impl_->model_joint_ids.reserve(hardware_joint_names.size());
 
-  for (const auto & name : hardware_joint_names) {
+  for (std::size_t hardware_index = 0; hardware_index < hardware_joint_names.size();
+    ++hardware_index)
+  {
+    const auto & name = hardware_joint_names[hardware_index];
     const auto joint_id = impl_->model.getJointId(name);
     if (joint_id == 0 || joint_id >= impl_->model.joints.size()) {
       throw std::runtime_error("joint not found in Pinocchio model: " + name);
@@ -52,6 +58,9 @@ void GravityCompensation::initialize(
       throw std::runtime_error("only 1-DoF hardware joints are supported: " + name);
     }
     impl_->model_joint_ids.push_back(joint_id);
+    if (name == "joint4") {
+      impl_->joint4_hardware_index = hardware_index;
+    }
   }
 
   impl_->joint4_scale = joint4_scale;
@@ -78,8 +87,8 @@ std::vector<double> GravityCompensation::compute(
     const auto joint_id = impl_->model_joint_ids[i];
     result[i] = model_effort[impl_->model.joints[joint_id].idx_v()];
   }
-  if (result.size() > 3) {
-    result[3] *= impl_->joint4_scale;
+  if (impl_->joint4_hardware_index < result.size()) {
+    result[impl_->joint4_hardware_index] *= impl_->joint4_scale;
   }
   return result;
 }

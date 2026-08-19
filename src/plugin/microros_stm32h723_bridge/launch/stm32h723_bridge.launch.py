@@ -31,7 +31,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('serial_device', default_value='/dev/ttyACM0'),
         DeclareLaunchArgument('baudrate', default_value='921600'),
-        DeclareLaunchArgument('start_agent', default_value='true'),
+        # Real hardware uses the systemd-managed Agent. Enable this only for
+        # development environments where the service is not running.
+        DeclareLaunchArgument('start_agent', default_value='false'),
         DeclareLaunchArgument('required_joint_mask', default_value='0x7f'),
         Node(
             package='micro_ros_agent',

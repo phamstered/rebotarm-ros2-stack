@@ -1,0 +1,22 @@
+[Unit]
+Description=micro-ROS Agent for STM32H723 motor controller
+Documentation=https://github.com/micro-ROS/micro-ROS-Agent
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=jialiang
+Group=jialiang
+SupplementaryGroups=dialout
+Environment=ROS_DOMAIN_ID=0
+Environment=RCUTILS_COLORIZED_OUTPUT=1
+ExecStart=/bin/bash -lc 'source /opt/ros/humble/setup.bash && source /home/jialiang/Project/microros_ws/install/setup.bash && exec ros2 run micro_ros_agent micro_ros_agent serial -D /dev/serial/by-id/usb-STMicroelectronics_STM32_Virtual_ComPort_326238823233-if00 -b 921600 -v 4'
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+KillSignal=SIGINT
+SuccessExitStatus=254
+
+[Install]
+WantedBy=multi-user.target

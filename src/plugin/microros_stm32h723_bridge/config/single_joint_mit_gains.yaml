@@ -1,0 +1,17 @@
+# Conservative joint1-only gains for unloaded bench bring-up.
+# Inactive protocol slots remain zero regardless of these values.
+return:
+  kp: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+hold:
+  kp: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+track:
+  kp: [5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+idle:
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+# Joint-side effort limits; only joint1 is active in this profile.
+effort_limits: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
