@@ -1,0 +1,27 @@
+# Stream leader joint1 into the ros2_control position controller.
+mode: "ros2_control"
+
+leader_topic: "/leader/joint_states"
+follower_state_topic: "/joint_states"
+follower_command_topic: "/joint1_teleop_controller/commands"
+
+# Capture leader and follower positions on the first valid sample so enabling
+# teleoperation does not command an immediate jump to the leader's absolute zero.
+relative_mode: true
+follower_state_timeout: 0.2
+
+joint_mapping:
+  joint1: joint1
+
+joints:
+  joint1:
+    sign: -1.0
+    offset: 0.0
+    leader_limit: [-2.27, 2.27]
+    follower_limit: [-2.8, 2.8]
+    deadband: 0.005
+
+# Conservative limits for the first unloaded joint1 teleoperation test.
+max_velocity: 0.3
+command_timeout: 0.1
+publish_rate: 100.0

@@ -53,6 +53,11 @@ def test_single_joint_controller_claims_only_joint1():
     config = yaml.safe_load(
         (PACKAGE_ROOT / 'config' / 'single_joint_controllers.yaml').read_text())
     assert config['joint1_controller']['ros__parameters']['joints'] == ['joint1']
+    manager = config['controller_manager']['ros__parameters']
+    assert manager['joint1_teleop_controller']['type'] == (
+        'position_controllers/JointGroupPositionController')
+    assert config['joint1_teleop_controller']['ros__parameters']['joints'] == [
+        'joint1']
 
 
 def test_single_joint_gains_are_conservative_and_inactive_slots_are_zero():

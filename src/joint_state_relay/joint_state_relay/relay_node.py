@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
@@ -30,6 +31,9 @@ class JointStateRelay(Node):
         self._max_vel = self._config.get('max_velocity', 3.0)
         self._timeout = self._config.get('command_timeout', 0.1)
         self._publish_rate = self._config.get('publish_rate', 100.0)
+        self._relative_mode = self._config.get('relative_mode', False)
+        self._follower_state_timeout = self._config.get(
+            'follower_state_timeout', 0.2)
 
         # Separate arm joints from gripper joints
         self._arm_joint_names = []
@@ -60,6 +64,12 @@ class JointStateRelay(Node):
 
         # Deadband: store last commanded position per joint
         self._last_commanded_positions = {}
+        self._follower_positions = {}
+        self._leader_origins = {}
+        self._follower_origins = {}
+        self._last_follower_state_time = None
+        self._waiting_for_follower_state_logged = False
+        self._command_timed_out = False
 
         self._sub = self.create_subscription(
             JointState, self._config['leader_topic'],
@@ -69,6 +79,15 @@ class JointStateRelay(Node):
             self._pub = self.create_publisher(
                 JointState, self._config['follower_command_topic'], 10)
             self._timer = self.create_timer(1.0 / self._publish_rate, self._publish_real)
+        elif self._mode == 'ros2_control':
+            self._pub = self.create_publisher(
+                Float64MultiArray, self._config['follower_command_topic'], 10)
+            if self._relative_mode:
+                self._follower_state_sub = self.create_subscription(
+                    JointState, self._config['follower_state_topic'],
+                    self._follower_state_cb, 10)
+            self._timer = self.create_timer(
+                1.0 / self._publish_rate, self._publish_ros2_control)
         else:
             # Arm controller
             action_ns = self._config.get('gazebo_controller', 'arm_controller')
@@ -94,6 +113,21 @@ class JointStateRelay(Node):
             f'leader={self._config["leader_topic"]}, '
             f'rate={self._publish_rate} Hz')
 
+    def _follower_state_cb(self, msg: JointState):
+        for index, name in enumerate(msg.name):
+            if index < len(msg.position) and np.isfinite(msg.position[index]):
+                self._follower_positions[name] = float(msg.position[index])
+        self._last_follower_state_time = self.get_clock().now()
+        self._waiting_for_follower_state_logged = False
+
+    def _follower_state_is_fresh(self):
+        if self._last_follower_state_time is None:
+            return False
+        elapsed = (
+            self.get_clock().now() - self._last_follower_state_time
+        ).nanoseconds / 1e9
+        return elapsed <= self._follower_state_timeout
+
     def _leader_cb(self, msg: JointState):
         positions = {}
         for i, name in enumerate(msg.name):
@@ -102,10 +136,33 @@ class JointStateRelay(Node):
 
         mapped = {}
         for leader_name, follower_name in self._mapping.items():
-            if leader_name in positions:
+            if leader_name in positions and np.isfinite(positions[leader_name]):
                 cfg = self._joints_cfg[follower_name]
                 pos = positions[leader_name]
-                new_pos = cfg['sign'] * pos + cfg['offset']
+                if self._relative_mode:
+                    if (follower_name not in self._follower_positions or
+                            not self._follower_state_is_fresh()):
+                        if not self._waiting_for_follower_state_logged:
+                            self.get_logger().warn(
+                                'Waiting for follower joint state before '
+                                'capturing teleoperation origins')
+                            self._waiting_for_follower_state_logged = True
+                        continue
+                    if leader_name not in self._leader_origins:
+                        self._leader_origins[leader_name] = pos
+                        self._follower_origins[follower_name] = (
+                            self._follower_positions[follower_name])
+                        self.get_logger().info(
+                            f'Aligned {leader_name}={pos:.4f} to '
+                            f'{follower_name}='
+                            f'{self._follower_origins[follower_name]:.4f}')
+                    new_pos = (
+                        self._follower_origins[follower_name] +
+                        cfg['sign'] *
+                        (pos - self._leader_origins[leader_name]) +
+                        cfg.get('offset', 0.0))
+                else:
+                    new_pos = cfg['sign'] * pos + cfg['offset']
 
                 # Apply deadband: ignore small changes
                 deadband = cfg.get('deadband', 0.0)
@@ -122,6 +179,7 @@ class JointStateRelay(Node):
         if mapped:
             self._last_leader_positions = mapped
             self._last_cmd_time = self.get_clock().now()
+            self._command_timed_out = False
 
             # Send gripper command separately in gazebo mode
             if self._gripper_joint_names and self._mode == 'gazebo':
@@ -133,6 +191,14 @@ class JointStateRelay(Node):
 
         elapsed = (self.get_clock().now() - self._last_cmd_time).nanoseconds / 1e9
         if elapsed > self._timeout:
+            if not self._command_timed_out:
+                self.get_logger().warn(
+                    'Leader command timeout; retaining the last follower '
+                    'target and resetting relative alignment')
+                self._command_timed_out = True
+                self._leader_origins.clear()
+                self._follower_origins.clear()
+                self._last_published_positions = None
             return None
 
         positions = []
@@ -169,6 +235,15 @@ class JointStateRelay(Node):
         msg.position = [float(p) for p in positions]
         msg.velocity = [0.0] * len(positions)
         msg.effort = []
+        self._pub.publish(msg)
+
+    def _publish_ros2_control(self):
+        positions = self._transform_positions()
+        if positions is None:
+            return
+
+        msg = Float64MultiArray()
+        msg.data = [float(position) for position in positions]
         self._pub.publish(msg)
 
     def _send_gripper_command(self, mapped_positions):

@@ -62,3 +62,30 @@ compensation, and writes zeros to all six inactive protocol slots. It must not
 be used if any other motor channel is enabled. The profile uses the dedicated
 `single_joint_mit_gains.yaml` limits: HOLD kp/kd 2.0/0.2, TRACK 5.0/0.5,
 joint1 effort limit 1.0, and zero gains/effort for every inactive slot.
+
+## Single-joint teleoperation
+
+The single-joint launch loads `joint1_teleop_controller` in the inactive state
+while keeping `joint1_controller` active for trajectory tests. Start the relay,
+then switch the command-interface owner explicitly:
+
+```bash
+ros2 launch joint_state_relay relay_to_microros_single_joint.launch.py
+ros2 control switch_controllers \
+  --deactivate joint1_controller \
+  --activate joint1_teleop_controller --strict
+```
+
+The relay consumes `/leader/joint_states` and streams a one-element
+`Float64MultiArray` to `/joint1_teleop_controller/commands`. Relative alignment
+captures both arms' positions on the first fresh sample, the command rate is
+limited to 0.3 rad/s, and a leader timeout holds the last follower target. Move
+only joint1 during this profile and keep a physical emergency stop available.
+
+Return to trajectory control with:
+
+```bash
+ros2 control switch_controllers \
+  --deactivate joint1_teleop_controller \
+  --activate joint1_controller --strict
+```

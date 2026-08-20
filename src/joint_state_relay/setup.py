@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name + '/config/', glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
+    tests_require=['pytest'],
     zip_safe=True,
     maintainer='jialiang',
     maintainer_email='jialiang@todo.todo',

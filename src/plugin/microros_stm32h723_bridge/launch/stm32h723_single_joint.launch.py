@@ -52,4 +52,16 @@ def generate_launch_description():
             ],
             output='screen',
         ),
+        # Load the streaming teleoperation controller without claiming joint1.
+        # Switch from joint1_controller explicitly before starting teleoperation.
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'joint1_teleop_controller',
+                '--inactive',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+        ),
     ])
