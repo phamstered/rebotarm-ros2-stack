@@ -21,7 +21,8 @@ joints:
     follower_limit: [-2.8, 2.8]
     deadband: 0.005
 
-# Conservative limits for the first unloaded joint1 teleoperation test.
-max_velocity: 0.3
+# Disable relay-side position rate limiting. The follower tracks each mapped
+# leader target immediately, while joint limits and the configured deadband remain active.
+max_velocity: 0.0
 command_timeout: 0.1
 publish_rate: 100.0

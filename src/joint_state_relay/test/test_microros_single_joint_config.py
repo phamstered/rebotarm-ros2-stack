@@ -17,6 +17,6 @@ def test_single_joint_teleop_targets_ros2_control_controller():
     assert config['follower_command_topic'] == (
         '/joint1_teleop_controller/commands')
     assert config['joint_mapping'] == {'joint1': 'joint1'}
-    assert config['max_velocity'] <= 0.3
+    assert config['max_velocity'] == 0.0
     assert config['command_timeout'] <= 0.1
     assert config['follower_state_timeout'] <= 0.2
