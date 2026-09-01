@@ -1,17 +1,22 @@
-# Stream leader joint1 into the ros2_control position controller.
+# Stream leader joints 1-6 into the ros2_control position controller.
 mode: "ros2_control"
 
 leader_topic: "/leader/joint_states"
 follower_state_topic: "/joint_states"
 follower_command_topic: "/joint1_teleop_controller/commands"
 
-# Capture leader and follower positions on the first valid sample so enabling
-# teleoperation does not command an immediate jump to the leader's absolute zero.
-relative_mode: true
+# Map leader positions directly into follower joint coordinates. Calibrate
+# follower zeros and offsets before enabling teleoperation.
+relative_mode: false
 follower_state_timeout: 0.2
 
 joint_mapping:
   joint1: joint1
+  joint2: joint2
+  joint3: joint3
+  joint4: joint4
+  joint5: joint5
+  joint6: joint6
 
 joints:
   joint1:
@@ -20,9 +25,39 @@ joints:
     leader_limit: [-2.27, 2.27]
     follower_limit: [-2.8, 2.8]
     deadband: 0.005
+  joint2:
+    sign: -1.0
+    offset: 0.0
+    leader_limit: [0.0, 3.14]
+    follower_limit: [-3.14, 0.0]
+    deadband: 0.005
+  joint3:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-3.14, 0.0]
+    follower_limit: [-3.14, 0.0]
+    deadband: 0.005
+  joint4:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-1.57, 2.2]
+    follower_limit: [-1.87, 1.57]
+    deadband: 0.005
+  joint5:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-1.2, 1.2]
+    follower_limit: [-1.57, 1.57]
+    deadband: 0.005
+  joint6:
+    sign: 1.0
+    offset: 0.0
+    leader_limit: [-3.14, 3.14]
+    follower_limit: [-3.14, 3.14]
+    deadband: 0.005
 
-# Disable relay-side position rate limiting. The follower tracks each mapped
-# leader target immediately, while joint limits and the configured deadband remain active.
-max_velocity: 0.0
+# Limit each follower joint to 1 rad/s. At 100 Hz, each command changes by at
+# most 0.01 rad and the first command ramp starts from measured follower state.
+max_velocity: 1.0
 command_timeout: 0.1
 publish_rate: 100.0

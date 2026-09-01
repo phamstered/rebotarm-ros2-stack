@@ -35,6 +35,15 @@ def generate_launch_description():
             output='screen',
         ),
         Node(
+            package='robot_state_publisher',
+            executable='robot_state_publisher',
+            parameters=[
+                robot_description,
+                {'use_sim_time': use_sim_time},
+            ],
+            output='screen',
+        ),
+        Node(
             package='controller_manager',
             executable='spawner',
             arguments=[
@@ -47,19 +56,17 @@ def generate_launch_description():
             package='controller_manager',
             executable='spawner',
             arguments=[
-                'joint1_controller',
+                'joint1_trajectory_controller',
+                '--inactive',
                 '--controller-manager', '/controller_manager',
             ],
             output='screen',
         ),
-        # Load the streaming teleoperation controller without claiming joint1.
-        # Switch from joint1_controller explicitly before starting teleoperation.
         Node(
             package='controller_manager',
             executable='spawner',
             arguments=[
                 'joint1_teleop_controller',
-                '--inactive',
                 '--controller-manager', '/controller_manager',
             ],
             output='screen',

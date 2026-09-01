@@ -49,6 +49,7 @@ def generate_launch_description():
 
     # 声明 launch 参数
     ld.add_action(DeclareBooleanLaunchArg("debug", default_value=False))
+    ld.add_action(DeclareBooleanLaunchArg("use_sim_time", default_value=False))
     ld.add_action(DeclareBooleanLaunchArg("allow_trajectory_execution", default_value=True))
     ld.add_action(DeclareBooleanLaunchArg("publish_monitored_planning_scene", default_value=True))
     ld.add_action(DeclareLaunchArgument("capabilities", default_value=""))
@@ -82,7 +83,7 @@ def generate_launch_description():
         moveit_config.to_dict(),
         move_group_configuration,
         trajectory_execution,
-        {"use_sim_time": True},
+        {"use_sim_time": LaunchConfiguration("use_sim_time")},
     ]
 
     # 使用 add_debuggable_node 支持可选的 GDB 调试

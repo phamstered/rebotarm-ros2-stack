@@ -1,17 +1,17 @@
-# Conservative joint1-only gains for unloaded bench bring-up.
-# Inactive protocol slots remain zero regardless of these values.
+# Joint1-6 RETURN/HOLD gains match the legacy follower driver; TRACK is tuned separately.
+# The inactive gripper protocol slot remains zero.
 return:
-  kp: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 0.0]
+  kd: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 0.0]
 hold:
-  kp: [2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0, 0.0]
+  kd: [2.0, 2.0, 2.0, 1.5, 1.5, 1.5, 0.0]
 track:
-  kp: [5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  kd: [0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kp: [40.0, 40.0, 40.0, 40.0, 10.0, 10.0, 0.0]
+  kd: [3.0, 3.0, 3.0, 1.5, 1.5, 1.5, 0.0]
 idle:
   kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-  kd: [0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0]
 
-# Joint-side effort limits; only joint1 is active in this profile.
-effort_limits: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# Gravity feed-forward limits follow the full-arm Micro-ROS profile.
+effort_limits: [5.0, 5.0, 5.0, 3.0, 3.0, 3.0, 0.0]

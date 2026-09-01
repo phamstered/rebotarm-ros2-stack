@@ -1,6 +1,7 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm_single_joint">
   <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/single_joint_mit_gains.yaml"/>
+  <xacro:arg name="model_urdf_path" default="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
 
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
 
@@ -10,19 +11,66 @@
       <param name="command_topic">/stm32/joint_commands</param>
       <param name="state_topic">/stm32/joint_states</param>
       <param name="status_topic">/stm32/status</param>
-      <param name="state_timeout_ms">150</param>
+      <param name="state_timeout_ms">500</param>
       <param name="activation_timeout_ms">5000</param>
       <param name="return_duration_ms">3000</param>
       <param name="zero_tolerance">0.03</param>
-      <param name="required_joint_mask">0x01</param>
+      <param name="required_joint_mask">0x3F</param>
       <param name="enable_gravity_compensation">false</param>
       <param name="gains_file">$(arg gains_file)</param>
+      <param name="model_urdf_path">$(arg model_urdf_path)</param>
+      <param name="joint4_gravity_scale">0.85</param>
     </hardware>
 
     <joint name="joint1">
       <command_interface name="position">
         <param name="min">-2.8</param>
         <param name="max">2.8</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint2">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">0.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint3">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">0.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint4">
+      <command_interface name="position">
+        <param name="min">-1.87</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint5">
+      <command_interface name="position">
+        <param name="min">-1.57</param>
+        <param name="max">1.57</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint6">
+      <command_interface name="position">
+        <param name="min">-3.14</param>
+        <param name="max">3.14</param>
       </command_interface>
       <state_interface name="position"/>
       <state_interface name="velocity"/>

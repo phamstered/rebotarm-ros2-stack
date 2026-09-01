@@ -45,9 +45,9 @@ ros2 run microros_stm32h723_bridge single_motor_smoke_test.py \
 
 The tool refuses targets outside ±0.10 rad, gains above its conservative smoke-test limits, and any firmware status whose active mask is not exactly `0x01`. Keep the motor unloaded and retain a physical emergency stop.
 
-## Single-joint ros2_control
+## Joint1-3 ros2_control bring-up
 
-After the topic-level smoke test passes, start the dedicated joint1 profile while
+After the topic-level smoke test passes, start the dedicated bring-up profile while
 the systemd Agent is running:
 
 ```bash
@@ -56,36 +56,84 @@ ros2 control list_hardware_interfaces
 ros2 control list_controllers
 ```
 
-This profile requires firmware `active_joint_mask=0x01`, exports only
-`joint1/position`, accepts a one-name `JointState`, disables gravity
-compensation, and writes zeros to all six inactive protocol slots. It must not
-be used if any other motor channel is enabled. The profile uses the dedicated
-`single_joint_mit_gains.yaml` limits: HOLD kp/kd 2.0/0.2, TRACK 5.0/0.5,
-joint1 effort limit 1.0, and zero gains/effort for every inactive slot.
+This profile requires firmware whose active mask contains `0x3F` and exports the
+position interfaces for joint1-6. RETURN/HOLD gains match the legacy follower
+driver. The current TRACK experiment uses 40.0/3.0 for joint1-3, 40.0/1.5 for
+joint4, and 10.0/1.5 for joint5-6. IDLE is 0.0/1.0 for all six joints. Gravity
+feed-forward is disabled in this profile; effort remains limited to 5 N*m for
+joint1-3 and 3 N*m for joint4-6 if it is enabled again for later experiments.
 
-## Single-joint teleoperation
+## Joint1-6 teleoperation
 
-The single-joint launch loads `joint1_teleop_controller` in the inactive state
-while keeping `joint1_controller` active for trajectory tests. Start the relay,
-then switch the command-interface owner explicitly:
+The bring-up launch activates `joint1_teleop_controller` by default and
+loads `joint1_trajectory_controller` in the inactive state. Start the relay to
+begin streaming leader joint1-6 commands:
+
+The trajectory controller accepts partial goals, so a trajectory naming only
+`joint1` holds the other five joints at their current positions. Its action is
+`/joint1_trajectory_controller/follow_joint_trajectory`.
 
 ```bash
-ros2 launch joint_state_relay relay_to_microros_single_joint.launch.py
-ros2 control switch_controllers \
-  --deactivate joint1_controller \
-  --activate joint1_teleop_controller --strict
+./scripts/start_joint1_teleop_relay.sh \
+  --start-controller=true --start-leader=true \
+  --ros-domain-id=0 --leader-timeout=30
 ```
 
-The relay consumes `/leader/joint_states` and streams a one-element
-`Float64MultiArray` to `/joint1_teleop_controller/commands`. Relative alignment
-captures both arms' positions on the first fresh sample, the command rate is
-limited to 0.3 rad/s, and a leader timeout holds the last follower target. Move
-only joint1 during this profile and keep a physical emergency stop available.
+The helper checks `/leader/joint_states`, `/joint_states`, and the loaded
+Controller before starting the relay. Keep the relay in one terminal and
+verify the published command from another terminal.
+
+It also requires fresh `/stm32/joint_states` and `/stm32/status`, recovers an
+unconfigured HardwareInterface, verifies that all six position interfaces are
+available and claimed, and waits for a real message on the plural command topic
+`/joint1_teleop_controller/commands`. Any failed stage stops startup instead of
+leaving a controller-only process tree behind.
+
+Startup is reported as nine self-check stages, beginning with the leader serial
+driver and `/leader/joint_states`, then checking the systemd micro-ROS Agent,
+STM32 mask/fault status, controllers, HardwareInterface, follower feedback,
+relay output, `/stm32/joint_commands`, and the STM32 command-sequence
+acknowledgement. The script prints an end-to-end path summary only after every
+stage passes.
+
+Leader initialization may take longer than 30 seconds, so its default timeout
+is 90 seconds. Child launches run in dedicated process groups for reliable
+cleanup. Before stopping an active ros2_control process, the helper requests
+the hardware safe-stop service and waits for STM32 `MODE_DISABLE`; this avoids
+triggering the firmware's latched command-loss fault during normal shutdown.
+The bring-up host feedback timeout is 500 ms to tolerate occasional
+micro-ROS serial/DDS scheduling gaps; the STM32 firmware retains its faster CAN
+feedback and command-loss safety checks.
+
+By default, the helper stops stale joint1 relay processes, restarts the leader
+and controller processes that it owns, and refreshes the ROS 2 daemon before
+launching. Pass `--clean=false` only when intentionally reusing an existing
+runtime.
+
+Use `--start-leader=false` (the default) when a separately managed leader
+driver already publishes `/leader/joint_states`. With `true`, the helper starts
+`robo_driver` in the `/leader` namespace with `lock:=disable` and stops only
+that child process when the relay exits.
+
+The helper also starts the joint1-6 ros2_control launch by default. If a
+`ros2_control_node` process already exists, it is reused. Pass
+`--start-controller=false` when Controller Manager is managed separately; the
+script then fails instead of starting a second instance.
+
+The relay consumes `/leader/joint_states` and streams a six-element
+`Float64MultiArray` ordered as joint1 through joint6 to
+`/joint1_teleop_controller/commands`. Absolute mapping is enabled by default,
+so follower encoder zeros and mapping offsets must be calibrated before startup.
+Relay-side position rate limiting is 1.0 rad/s and starts from measured follower
+state, while joint limits, deadbands, and leader timeout handling remain active.
+The joint state broadcaster
+explicitly publishes joint1 through joint6 in that order. Move the leader slowly
+during initial testing and keep a physical emergency stop available.
 
 Return to trajectory control with:
 
 ```bash
 ros2 control switch_controllers \
   --deactivate joint1_teleop_controller \
-  --activate joint1_controller --strict
+  --activate joint1_trajectory_controller --strict
 ```

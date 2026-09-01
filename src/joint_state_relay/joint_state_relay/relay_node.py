@@ -82,7 +82,7 @@ class JointStateRelay(Node):
         elif self._mode == 'ros2_control':
             self._pub = self.create_publisher(
                 Float64MultiArray, self._config['follower_command_topic'], 10)
-            if self._relative_mode:
+            if self._relative_mode or self._max_vel > 0:
                 self._follower_state_sub = self.create_subscription(
                     JointState, self._config['follower_state_topic'],
                     self._follower_state_cb, 10)
@@ -194,7 +194,7 @@ class JointStateRelay(Node):
             if not self._command_timed_out:
                 self.get_logger().warn(
                     'Leader command timeout; retaining the last follower '
-                    'target and resetting relative alignment')
+                    'target and resetting relay ramp/alignment state')
                 self._command_timed_out = True
                 self._leader_origins.clear()
                 self._follower_origins.clear()
@@ -208,6 +208,24 @@ class JointStateRelay(Node):
             lo, hi = cfg['follower_limit']
             pos = max(lo, min(hi, pos))
             positions.append(pos)
+
+        if self._max_vel > 0 and self._last_published_positions is None:
+            follower_state_ready = (
+                self._follower_state_is_fresh() and
+                all(name in self._follower_positions
+                    for name in self._follower_joint_names)
+            )
+            if not follower_state_ready:
+                if not self._waiting_for_follower_state_logged:
+                    self.get_logger().warn(
+                        'Waiting for follower joint state before starting '
+                        'the position-rate-limited command ramp')
+                    self._waiting_for_follower_state_logged = True
+                return None
+            self._last_published_positions = [
+                self._follower_positions[name]
+                for name in self._follower_joint_names
+            ]
 
         if self._last_published_positions is not None and self._max_vel > 0:
             dt = 1.0 / self._publish_rate
