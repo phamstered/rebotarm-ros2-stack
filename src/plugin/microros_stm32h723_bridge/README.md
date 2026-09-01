@@ -5,6 +5,9 @@ ROS 2 Humble `hardware_interface::SystemInterface` for a seven-joint STM32H723 m
 Gravity feed-forward is provided by the separately switchable
 `gravity_compensation_controller`. Its per-joint `gravity_scales` and
 `effort_limits` are configured in `config/single_joint_controllers.yaml`.
+The controller claims only the effort command interfaces. It reads position
+state solely as the Pinocchio configuration input and never writes position
+commands; the gravity gain profile uses zero position stiffness.
 For supported-arm tuning without the leader or relay, run:
 
 ```bash

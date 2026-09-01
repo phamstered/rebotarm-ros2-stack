@@ -1,13 +1,12 @@
-# Gravity-only drag test gains.
-# RETURN keeps its normal gains so shutdown can still return safely to zero.
+# Pure gravity feed-forward gains. Position stiffness is disabled in every mode.
 return:
-  kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 0.0]
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   kd: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 0.0]
 hold:
-  kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0, 0.0]
-  kd: [2.0, 2.0, 2.0, 1.5, 1.5, 1.5, 0.0]
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [3.0, 3.0, 3.0, 1.5, 1.5, 1.5, 0.0]
 track:
-  kp: [40.0, 40.0, 40.0, 40.0, 10.0, 10.0, 0.0]
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
   kd: [3.0, 3.0, 3.0, 1.5, 1.5, 1.5, 0.0]
 idle:
   kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

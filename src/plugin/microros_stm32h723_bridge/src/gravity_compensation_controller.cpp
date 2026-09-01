@@ -22,7 +22,6 @@ controller_interface::CallbackReturn GravityCompensationController::on_init()
     auto_declare<std::vector<double>>("gravity_scales", std::vector<double>(6, 1.0));
     auto_declare<std::vector<double>>(
       "effort_limits", {5.0, 5.0, 5.0, 3.0, 3.0, 3.0});
-    auto_declare<double>("startup_hold_duration_sec", 5.0);
   } catch (const std::exception & error) {
     RCLCPP_ERROR(get_node()->get_logger(), "Parameter declaration failed: %s", error.what());
     return controller_interface::CallbackReturn::ERROR;
@@ -37,8 +36,6 @@ controller_interface::CallbackReturn GravityCompensationController::on_configure
   model_urdf_path_ = get_node()->get_parameter("model_urdf_path").as_string();
   gravity_scales_ = get_node()->get_parameter("gravity_scales").as_double_array();
   effort_limits_ = get_node()->get_parameter("effort_limits").as_double_array();
-  startup_hold_duration_sec_ =
-    get_node()->get_parameter("startup_hold_duration_sec").as_double();
 
   if (joints_.empty() || gravity_scales_.size() != joints_.size() ||
     effort_limits_.size() != joints_.size())
@@ -46,10 +43,6 @@ controller_interface::CallbackReturn GravityCompensationController::on_configure
     RCLCPP_ERROR(
       get_node()->get_logger(),
       "joints, gravity_scales and effort_limits must have the same non-zero length");
-    return controller_interface::CallbackReturn::ERROR;
-  }
-  if (!std::isfinite(startup_hold_duration_sec_) || startup_hold_duration_sec_ < 0.0) {
-    RCLCPP_ERROR(get_node()->get_logger(), "startup_hold_duration_sec must be non-negative");
     return controller_interface::CallbackReturn::ERROR;
   }
   if (model_urdf_path_.empty()) {
@@ -73,7 +66,6 @@ GravityCompensationController::command_interface_configuration() const
   controller_interface::InterfaceConfiguration configuration;
   configuration.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   for (const auto & joint : joints_) {
-    configuration.names.push_back(joint + "/" + hardware_interface::HW_IF_POSITION);
     configuration.names.push_back(joint + "/" + hardware_interface::HW_IF_EFFORT);
   }
   return configuration;
@@ -93,20 +85,9 @@ GravityCompensationController::state_interface_configuration() const
 controller_interface::CallbackReturn GravityCompensationController::on_activate(
   const rclcpp_lifecycle::State &)
 {
-  startup_positions_.resize(joints_.size());
   for (std::size_t i = 0; i < joints_.size(); ++i) {
-    startup_positions_[i] = state_interfaces_[i].get_value();
-    if (!std::isfinite(startup_positions_[i])) {
-      RCLCPP_ERROR(get_node()->get_logger(), "Cannot capture finite startup joint positions");
-      return controller_interface::CallbackReturn::ERROR;
-    }
-    command_interfaces_[2 * i].set_value(startup_positions_[i]);
-    command_interfaces_[2 * i + 1].set_value(0.0);
+    command_interfaces_[i].set_value(0.0);
   }
-  activated_at_ = std::chrono::steady_clock::now();
-  RCLCPP_INFO(
-    get_node()->get_logger(), "Holding startup position for %.2f seconds",
-    startup_hold_duration_sec_);
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
@@ -142,16 +123,10 @@ controller_interface::return_type GravityCompensationController::update(
     return controller_interface::return_type::ERROR;
   }
 
-  const double active_seconds = std::chrono::duration<double>(
-    std::chrono::steady_clock::now() - activated_at_).count();
-  const bool hold_startup_position = active_seconds < startup_hold_duration_sec_;
-
   for (std::size_t i = 0; i < joints_.size(); ++i) {
     const double effort = std::clamp(
       gravity_effort[i] * gravity_scales_[i], -effort_limits_[i], effort_limits_[i]);
-    command_interfaces_[2 * i].set_value(
-      hold_startup_position ? startup_positions_[i] : positions[i]);
-    command_interfaces_[2 * i + 1].set_value(effort);
+    command_interfaces_[i].set_value(effort);
   }
   return controller_interface::return_type::OK;
 }

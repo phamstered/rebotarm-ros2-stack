@@ -1,7 +1,6 @@
 #ifndef MICROROS_STM32H723_BRIDGE__GRAVITY_COMPENSATION_CONTROLLER_HPP_
 #define MICROROS_STM32H723_BRIDGE__GRAVITY_COMPENSATION_CONTROLLER_HPP_
 
-#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -32,10 +31,7 @@ private:
   std::vector<std::string> joints_;
   std::vector<double> gravity_scales_;
   std::vector<double> effort_limits_;
-  std::vector<double> startup_positions_;
   std::string model_urdf_path_;
-  std::chrono::steady_clock::time_point activated_at_{};
-  double startup_hold_duration_sec_{5.0};
 };
 
 }  // namespace microros_stm32h723_bridge

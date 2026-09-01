@@ -569,19 +569,23 @@ hardware_interfaces="$(
     timeout 10 ros2 control list_hardware_interfaces \
         --controller-manager "$CONTROLLER_MANAGER" 2>&1 | strip_ansi || true
 )"
+EXPECTED_COMMAND_INTERFACE="position"
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    EXPECTED_COMMAND_INTERFACE="effort"
+fi
 if ! grep -Eq 'label=active' <<<"$hardware_components" || \
-    ! grep -Eq 'joint1/position \[available\] \[claimed\]' <<<"$hardware_interfaces" || \
-    ! grep -Eq 'joint2/position \[available\] \[claimed\]' <<<"$hardware_interfaces" || \
-    ! grep -Eq 'joint3/position \[available\] \[claimed\]' <<<"$hardware_interfaces" || \
-    ! grep -Eq 'joint4/position \[available\] \[claimed\]' <<<"$hardware_interfaces" || \
-    ! grep -Eq 'joint5/position \[available\] \[claimed\]' <<<"$hardware_interfaces" || \
-    ! grep -Eq 'joint6/position \[available\] \[claimed\]' <<<"$hardware_interfaces"; then
+    ! grep -Eq "joint1/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces" || \
+    ! grep -Eq "joint2/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces" || \
+    ! grep -Eq "joint3/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces" || \
+    ! grep -Eq "joint4/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces" || \
+    ! grep -Eq "joint5/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces" || \
+    ! grep -Eq "joint6/$EXPECTED_COMMAND_INTERFACE \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
     echo "$hardware_components" >&2
     echo "$hardware_interfaces" >&2
-    echo "ERROR: HardwareInterface did not become active with joint1-6 claimed." >&2
+    echo "ERROR: HardwareInterface did not become active with joint1-6 $EXPECTED_COMMAND_INTERFACE interfaces claimed." >&2
     exit 1
 fi
-pass "HardwareInterface is active; joint1-6 position interfaces are available and claimed."
+pass "HardwareInterface is active; joint1-6 $EXPECTED_COMMAND_INTERFACE interfaces are available and claimed."
 
 stage "Follower joint state from ros2_control"
 check_topic_once /joint_states "$FOLLOWER_STATE_TIMEOUT"

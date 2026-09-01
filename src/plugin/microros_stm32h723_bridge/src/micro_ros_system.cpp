@@ -277,20 +277,27 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
   }
 
   if (safe_stop_requested_.load()) {
-    if (command_mode_.load() != msg::JointCommand::MODE_RETURN) {
-      return_start_ = state_position_;
-      return_started_at_ = std::chrono::steady_clock::now();
-      command_mode_.store(msg::JointCommand::MODE_RETURN);
-    }
-    const auto elapsed = std::chrono::steady_clock::now() - return_started_at_;
-    const double alpha = std::clamp(
-      std::chrono::duration<double>(elapsed).count() /
-      std::chrono::duration<double>(return_duration_).count(), 0.0, 1.0);
-    for (const auto protocol_index : configured_protocol_indices_) {
-      targets[protocol_index] = return_start_[protocol_index] * (1.0 - alpha);
-    }
-    if (alpha >= 1.0 && configured_joints_at_zero()) {
+    const bool return_position_control_enabled = std::any_of(
+      configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
+      [this](const auto index) {return std::abs(return_gains_.kp[index]) > 1e-9;});
+    if (!return_position_control_enabled) {
       command_mode_.store(msg::JointCommand::MODE_DISABLE);
+    } else {
+      if (command_mode_.load() != msg::JointCommand::MODE_RETURN) {
+        return_start_ = state_position_;
+        return_started_at_ = std::chrono::steady_clock::now();
+        command_mode_.store(msg::JointCommand::MODE_RETURN);
+      }
+      const auto elapsed = std::chrono::steady_clock::now() - return_started_at_;
+      const double alpha = std::clamp(
+        std::chrono::duration<double>(elapsed).count() /
+        std::chrono::duration<double>(return_duration_).count(), 0.0, 1.0);
+      for (const auto protocol_index : configured_protocol_indices_) {
+        targets[protocol_index] = return_start_[protocol_index] * (1.0 - alpha);
+      }
+      if (alpha >= 1.0 && configured_joints_at_zero()) {
+        command_mode_.store(msg::JointCommand::MODE_DISABLE);
+      }
     }
   } else if (
     command_mode_.load() == msg::JointCommand::MODE_HOLD &&
@@ -342,7 +349,7 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
       message.effort[i] = 0.0F;
       continue;
     }
-    message.position[i] = static_cast<float>(targets[i]);
+    message.position[i] = gains.kp[i] == 0.0 ? 0.0F : static_cast<float>(targets[i]);
     message.velocity[i] = static_cast<float>(command_velocity_[i]);
     message.kp[i] = static_cast<float>(gains.kp[i]);
     message.kd[i] = static_cast<float>(gains.kd[i]);

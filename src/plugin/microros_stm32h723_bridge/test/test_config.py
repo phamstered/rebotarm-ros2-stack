@@ -94,7 +94,6 @@ def test_bringup_controllers_claim_joints_1_to_6():
     assert broadcaster['interfaces'] == ['position', 'velocity', 'effort']
     gravity = config['gravity_compensation_controller']['ros__parameters']
     assert gravity['joints'] == expected_joints
-    assert gravity['startup_hold_duration_sec'] == 5.0
     assert gravity['gravity_scales'] == [0.1, 0.15, 0.15, 0.65, 1.0, 1.0]
     assert gravity['effort_limits'] == [5.0, 5.0, 5.0, 3.0, 3.0, 3.0]
 
@@ -118,10 +117,12 @@ def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
     assert config['effort_limits'][6] == 0.0
 
 
-def test_gravity_mode_uses_tuned_track_gains():
+def test_gravity_mode_uses_zero_position_stiffness():
     config = yaml.safe_load(
         (PACKAGE_ROOT / 'config' / 'gravity_mit_gains.yaml').read_text())
-    assert config['track']['kp'] == [40.0] * 4 + [10.0] * 2 + [0.0]
+    assert config['return']['kp'] == [0.0] * 7
+    assert config['hold']['kp'] == [0.0] * 7
+    assert config['track']['kp'] == [0.0] * 7
     assert config['track']['kd'] == [3.0] * 3 + [1.5] * 3 + [0.0]
     assert config['idle']['kp'] == [0.0] * 7
     assert config['idle']['kd'] == [1.0] * 6 + [0.0]
