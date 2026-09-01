@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<library path="microros_stm32h723_bridge_gravity_controller">
+  <class
+    name="microros_stm32h723_bridge/GravityCompensationController"
+    type="microros_stm32h723_bridge::GravityCompensationController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>Pinocchio gravity feed-forward controller for the STM32H723 arm.</description>
+  </class>
+</library>

@@ -10,6 +10,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(controller_interface REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # Pinocchio 4 uses modern FindPython3, while Humble's rosidl_generator_py still
@@ -62,10 +64,34 @@ target_link_libraries(${HARDWARE_LIBRARY} "${cpp_typesupport_target}")
 
 pluginlib_export_plugin_description_file(hardware_interface microros_stm32h723_bridge.xml)
 
+set(GRAVITY_CONTROLLER_LIBRARY ${PROJECT_NAME}_gravity_controller)
+add_library(${GRAVITY_CONTROLLER_LIBRARY} SHARED
+  src/gravity_compensation.cpp
+  src/gravity_compensation_controller.cpp
+)
+target_include_directories(${GRAVITY_CONTROLLER_LIBRARY} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(${GRAVITY_CONTROLLER_LIBRARY}
+  ament_index_cpp
+  controller_interface
+  hardware_interface
+  pluginlib
+  rclcpp
+  rclcpp_lifecycle
+)
+target_link_libraries(${GRAVITY_CONTROLLER_LIBRARY} pinocchio::pinocchio)
+pluginlib_export_plugin_description_file(
+  controller_interface gravity_compensation_controller.xml)
+
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch urdf DESTINATION share/${PROJECT_NAME})
-install(FILES microros_stm32h723_bridge.xml DESTINATION share/${PROJECT_NAME})
-install(TARGETS ${HARDWARE_LIBRARY}
+install(FILES
+  microros_stm32h723_bridge.xml
+  gravity_compensation_controller.xml
+  DESTINATION share/${PROJECT_NAME})
+install(TARGETS ${HARDWARE_LIBRARY} ${GRAVITY_CONTROLLER_LIBRARY}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -73,6 +99,7 @@ install(TARGETS ${HARDWARE_LIBRARY}
 install(PROGRAMS
   scripts/mock_stm32_node.py
   scripts/single_motor_smoke_test.py
+  scripts/stm32_state_republisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -83,5 +110,5 @@ endif()
 
 ament_export_include_directories(include)
 ament_export_dependencies(rosidl_default_runtime)
-ament_export_libraries(${HARDWARE_LIBRARY})
+ament_export_libraries(${HARDWARE_LIBRARY} ${GRAVITY_CONTROLLER_LIBRARY})
 ament_package()

@@ -1,6 +1,15 @@
 # microros_stm32h723_bridge
 
-ROS 2 Humble `hardware_interface::SystemInterface` for a seven-joint STM32H723 micro-ROS motor controller. The plugin receives `JointState`, computes Pinocchio gravity feed-forward, and publishes fixed-size MIT commands. Serial transport remains owned by `micro-ros-agent`.
+ROS 2 Humble `hardware_interface::SystemInterface` for a seven-joint STM32H723 micro-ROS motor controller. The plugin receives `JointState` feedback and publishes fixed-size MIT commands. Serial transport remains owned by `micro-ros-agent`.
+
+Gravity feed-forward is provided by the separately switchable
+`gravity_compensation_controller`. Its per-joint `gravity_scales` and
+`effort_limits` are configured in `config/single_joint_controllers.yaml`.
+For supported-arm tuning without the leader or relay, run:
+
+```bash
+./scripts/start_joint1_teleop_relay.sh --mode=gravity --clean=true
+```
 
 ## Build
 
@@ -60,8 +69,8 @@ This profile requires firmware whose active mask contains `0x3F` and exports the
 position interfaces for joint1-6. RETURN/HOLD gains match the legacy follower
 driver. The current TRACK experiment uses 40.0/3.0 for joint1-3, 40.0/1.5 for
 joint4, and 10.0/1.5 for joint5-6. IDLE is 0.0/1.0 for all six joints. Gravity
-feed-forward is disabled in this profile; effort remains limited to 5 N*m for
-joint1-3 and 3 N*m for joint4-6 if it is enabled again for later experiments.
+feed-forward is enabled in normal control mode and limited to 5 N*m for
+joint1-3 and 3 N*m for joint4-6. State-only mode never loads this control path.
 
 ## Joint1-6 teleoperation
 
@@ -129,6 +138,23 @@ state, while joint limits, deadbands, and leader timeout handling remain active.
 The joint state broadcaster
 explicitly publishes joint1 through joint6 in that order. Move the leader slowly
 during initial testing and keep a physical emergency stop available.
+
+## Read-only calibration view
+
+Stop `rebotarm_moveit_config demo.launch.py` before starting the real follower
+view; its mock Controller Manager otherwise publishes zero-valued joint states.
+Start the STM32 Agent, then launch the bridge in state-only mode:
+
+```bash
+ros2 launch microros_stm32h723_bridge \
+  stm32h723_single_joint.launch.py state_only:=true
+```
+
+This mode starts `robot_state_publisher` and republishes joint1-6 from
+`/stm32/joint_states` to `/joint_states` in deterministic order. It does not
+start Controller Manager, load MicroRosSystem, activate controllers, or publish
+`/stm32/joint_commands`. Use it to compare the real follower pose with the URDF
+before writing motor zero offsets.
 
 Return to trajectory control with:
 

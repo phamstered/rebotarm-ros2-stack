@@ -13,6 +13,7 @@ MICROROS_AGENT_SERVICE="${MICROROS_AGENT_SERVICE:-micro-ros-agent-stm32h723.serv
 REQUIRED_ACTIVE_JOINT_MASK=$((0x3F))
 START_LEADER="false"
 START_CONTROLLER="true"
+RUN_MODE="teleop"
 CLEAN_BEFORE_START="true"
 DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 LEADER_STATE_TIMEOUT="90"
@@ -23,6 +24,7 @@ RELAY_START_TIMEOUT="15"
 LEADER_PID=""
 CONTROLLER_PID=""
 RELAY_PID=""
+GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/single_joint_mit_gains.yaml"
 CURRENT_STAGE=0
 TOTAL_STAGES=9
 LAST_TOPIC_SAMPLE=""
@@ -30,6 +32,7 @@ LAST_TOPIC_SAMPLE=""
 usage() {
     echo "Usage: $0 [options]"
     echo
+    echo "  --mode=teleop|gravity  Full leader teleoperation or gravity-only tuning (default: teleop)."
     echo "  --start-leader=true   Start robo_driver in /leader namespace with lock disabled."
     echo "  --start-leader=false  Require an existing /leader/joint_states publisher (default)."
     echo "  --start-controller=true   Start ros2_control when it is not already running (default)."
@@ -47,6 +50,9 @@ usage() {
 
 for argument in "$@"; do
     case "$argument" in
+        --mode=*)
+            RUN_MODE="${argument#*=}"
+            ;;
         --start-leader=true)
             START_LEADER="true"
             ;;
@@ -97,6 +103,15 @@ for argument in "$@"; do
             ;;
     esac
 done
+
+if [[ "$RUN_MODE" != "teleop" && "$RUN_MODE" != "gravity" ]]; then
+    echo "ERROR: --mode must be teleop or gravity." >&2
+    exit 2
+fi
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    START_LEADER="false"
+    GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/gravity_mit_gains.yaml"
+fi
 
 if [[ ! "$DOMAIN_ID" =~ ^[0-9]+$ ]]; then
     echo "ERROR: --ros-domain-id must be a non-negative integer." >&2
@@ -425,7 +440,9 @@ else
 fi
 
 stage "Leader arm driver"
-if [[ "$START_LEADER" == "true" ]]; then
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    pass "Gravity-only mode: leader driver is not started."
+elif [[ "$START_LEADER" == "true" ]]; then
     if [[ ! -f "$LEADER_SETUP" ]]; then
         echo "ERROR: Leader workspace is not built: $LEADER_SETUP" >&2
         exit 1
@@ -454,12 +471,16 @@ else
 fi
 
 stage "Leader arm ROS feedback"
-if ! check_topic_once /leader/joint_states "$LEADER_STATE_TIMEOUT"; then
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    pass "Gravity-only mode: leader feedback check is skipped."
+elif ! check_topic_once /leader/joint_states "$LEADER_STATE_TIMEOUT"; then
     echo "Check the same domain explicitly:" >&2
     echo "  ROS_DOMAIN_ID=$ROS_DOMAIN_ID ros2 topic echo /leader/joint_states --once" >&2
     exit 1
 fi
-pass "/leader/joint_states is publishing."
+if [[ "$RUN_MODE" == "teleop" ]]; then
+    pass "/leader/joint_states is publishing."
+fi
 
 stage "Micro-ROS Agent and STM32 endpoint"
 check_micro_ros_agent
@@ -475,7 +496,8 @@ if pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
 elif [[ "$START_CONTROLLER" == "true" ]]; then
     echo "Starting STM32H723 joint1-6 ros2_control."
     setsid ros2 launch microros_stm32h723_bridge \
-        stm32h723_single_joint.launch.py &
+        stm32h723_single_joint.launch.py controller_mode:="$RUN_MODE" \
+        gains_file:="$GAINS_FILE" &
     CONTROLLER_PID=$!
 else
     echo "ERROR: ros2_control_node is not running." >&2
@@ -484,6 +506,10 @@ else
 fi
 
 echo "Waiting for Controller Manager and joint1-6 controllers."
+ACTIVE_COMMAND_CONTROLLER="joint1_teleop_controller"
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    ACTIVE_COMMAND_CONTROLLER="gravity_compensation_controller"
+fi
 controller_deadline=$((SECONDS + CONTROLLER_START_TIMEOUT))
 controller_list=""
 while (( SECONDS < controller_deadline )); do
@@ -491,7 +517,7 @@ while (( SECONDS < controller_deadline )); do
             timeout 5 ros2 control list_controllers \
                 --controller-manager "$CONTROLLER_MANAGER" 2>&1
         )" && \
-        controller_has_state joint1_teleop_controller active "$controller_list" && \
+        controller_has_state "$ACTIVE_COMMAND_CONTROLLER" active "$controller_list" && \
         controller_has_state joint_state_broadcaster active "$controller_list" && \
         controller_has_state joint1_trajectory_controller inactive "$controller_list"; then
         break
@@ -499,7 +525,7 @@ while (( SECONDS < controller_deadline )); do
     sleep 1
 done
 controller_list="$(strip_ansi <<<"$controller_list")"
-if ! controller_has_state joint1_teleop_controller active "$controller_list" || \
+if ! controller_has_state "$ACTIVE_COMMAND_CONTROLLER" active "$controller_list" || \
     ! controller_has_state joint_state_broadcaster active "$controller_list" || \
     ! controller_has_state joint1_trajectory_controller inactive "$controller_list"; then
     echo "$controller_list" >&2
@@ -508,7 +534,7 @@ if ! controller_has_state joint1_teleop_controller active "$controller_list" || 
     exit 1
 fi
 echo "$controller_list"
-pass "joint_state_broadcaster and joint1_teleop_controller are active."
+pass "joint_state_broadcaster and $ACTIVE_COMMAND_CONTROLLER are active."
 
 stage "MicroRosSystem HardwareInterface"
 echo "Checking ros2_control hardware lifecycle."
@@ -519,7 +545,7 @@ hardware_components="$(
 if ! grep -Eq 'label=active' <<<"$hardware_components"; then
     echo "HardwareInterface is not active; recovering its lifecycle."
     timeout 10 ros2 control set_controller_state \
-        joint1_teleop_controller inactive \
+        "$ACTIVE_COMMAND_CONTROLLER" inactive \
         --controller-manager "$CONTROLLER_MANAGER" >/dev/null 2>&1 || true
     timeout 10 ros2 control set_controller_state \
         joint_state_broadcaster inactive \
@@ -531,7 +557,7 @@ if ! grep -Eq 'label=active' <<<"$hardware_components"; then
         joint_state_broadcaster active \
         --controller-manager "$CONTROLLER_MANAGER"
     timeout 10 ros2 control set_controller_state \
-        joint1_teleop_controller active \
+        "$ACTIVE_COMMAND_CONTROLLER" active \
         --controller-manager "$CONTROLLER_MANAGER"
 fi
 
@@ -562,25 +588,29 @@ check_topic_once /joint_states "$FOLLOWER_STATE_TIMEOUT"
 pass "/joint_states is publishing follower joint1-6 feedback."
 
 stage "Leader-to-follower relay"
-echo "Starting joint1-6 teleoperation relay."
-echo "Publishing: /joint1_teleop_controller/commands"
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    pass "Gravity-only mode: leader relay is not started."
+else
+    echo "Starting joint1-6 teleoperation relay."
+    echo "Publishing: /joint1_teleop_controller/commands"
 
-setsid ros2 launch joint_state_relay \
-    relay_to_microros_single_joint.launch.py &
-RELAY_PID=$!
-if ! check_topic_once \
-    /joint1_teleop_controller/commands "$RELAY_START_TIMEOUT"; then
-    if ! kill -0 "$RELAY_PID" 2>/dev/null; then
-        wait "$RELAY_PID" 2>/dev/null || true
-        echo "ERROR: joint_state_relay exited during startup." >&2
-    else
-        echo "ERROR: relay is running but did not publish a command." >&2
-        echo "Check leader and follower timestamps and relative alignment logs." >&2
+    setsid ros2 launch joint_state_relay \
+        relay_to_microros_single_joint.launch.py &
+    RELAY_PID=$!
+    if ! check_topic_once \
+        /joint1_teleop_controller/commands "$RELAY_START_TIMEOUT"; then
+        if ! kill -0 "$RELAY_PID" 2>/dev/null; then
+            wait "$RELAY_PID" 2>/dev/null || true
+            echo "ERROR: joint_state_relay exited during startup." >&2
+        else
+            echo "ERROR: relay is running but did not publish a command." >&2
+            echo "Check leader and follower timestamps and relative alignment logs." >&2
+        fi
+        exit 1
     fi
-    exit 1
+    echo "Relay output is healthy: /joint1_teleop_controller/commands"
+    pass "Relay is publishing position commands for joint1-6."
 fi
-echo "Relay output is healthy: /joint1_teleop_controller/commands"
-pass "Relay is publishing position commands for joint1-6."
 
 stage "Micro-ROS bridge command and acknowledgement"
 check_topic_once /stm32/joint_commands "$RELAY_START_TIMEOUT"
@@ -621,9 +651,18 @@ check_stm32_status "$stm32_status_sample"
 pass "STM32 acknowledged command sequence $last_command_sequence."
 
 echo
-echo "End-to-end self-check passed:"
-echo "  leader arm -> /leader/joint_states"
-echo "  -> joint_state_relay -> /joint1_teleop_controller/commands"
-echo "  -> ros2_control MicroRosSystem -> /stm32/joint_commands"
-echo "  -> micro-ROS Agent -> STM32 status acknowledgement"
-wait "$RELAY_PID"
+if [[ "$RUN_MODE" == "gravity" ]]; then
+    echo "Gravity-only self-check passed:"
+    echo "  /stm32/joint_states -> gravity_compensation_controller"
+    echo "  -> MicroRosSystem -> /stm32/joint_commands"
+    echo "  -> micro-ROS Agent -> STM32 status acknowledgement"
+    echo "Tune gravity_scales and effort_limits in single_joint_controllers.yaml."
+    wait "$CONTROLLER_PID"
+else
+    echo "End-to-end self-check passed:"
+    echo "  leader arm -> /leader/joint_states"
+    echo "  -> joint_state_relay -> /joint1_teleop_controller/commands"
+    echo "  -> ros2_control MicroRosSystem -> /stm32/joint_commands"
+    echo "  -> micro-ROS Agent -> STM32 status acknowledgement"
+    wait "$RELAY_PID"
+fi

@@ -33,7 +33,23 @@ def test_hardware_status_exposes_active_mask_and_ack_sequence():
     assert 'uint16 fault_code' in definition
 
 
-def test_bringup_profile_exports_joints_1_to_6_without_gravity():
+def test_state_only_launch_uses_read_only_republisher():
+    launch_source = (
+        PACKAGE_ROOT / 'launch' / 'stm32h723_single_joint.launch.py'
+    ).read_text()
+    assert "'state_only'" in launch_source
+    assert "default_value='false'" in launch_source
+    assert "executable='stm32_state_republisher.py'" in launch_source
+    assert 'condition=IfCondition(state_only)' in launch_source
+    assert launch_source.count('condition=UnlessCondition(state_only)') == 3
+    assert "'controller_mode'" in launch_source
+    assert 'gravity_compensation_controller' in launch_source
+
+    cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
+    assert 'scripts/stm32_state_republisher.py' in cmake_source
+
+
+def test_bringup_profile_exports_joints_1_to_6_with_gravity():
     xacro_path = (
         PACKAGE_ROOT / 'urdf' / 'rebotarm.single_joint.micro_ros.xacro')
     root = ET.parse(xacro_path).getroot()
@@ -51,6 +67,9 @@ def test_bringup_profile_exports_joints_1_to_6_without_gravity():
     assert parameters['model_urdf_path'] == '$(arg model_urdf_path)'
     assert parameters['joint4_gravity_scale'] == '0.85'
     assert int(parameters['state_timeout_ms']) >= 500
+    for joint in ros2_control.findall('joint'):
+        assert [interface.attrib['name'] for interface in
+                joint.findall('command_interface')] == ['position', 'effort']
 
 
 def test_bringup_controllers_claim_joints_1_to_6():
@@ -66,11 +85,18 @@ def test_bringup_controllers_claim_joints_1_to_6():
         'joint_trajectory_controller/JointTrajectoryController')
     assert manager['joint1_teleop_controller']['type'] == (
         'position_controllers/JointGroupPositionController')
+    assert manager['gravity_compensation_controller']['type'] == (
+        'microros_stm32h723_bridge/GravityCompensationController')
     assert config['joint1_teleop_controller']['ros__parameters']['joints'] == (
         expected_joints)
     broadcaster = config['joint_state_broadcaster']['ros__parameters']
     assert broadcaster['joints'] == expected_joints
     assert broadcaster['interfaces'] == ['position', 'velocity', 'effort']
+    gravity = config['gravity_compensation_controller']['ros__parameters']
+    assert gravity['joints'] == expected_joints
+    assert gravity['startup_hold_duration_sec'] == 5.0
+    assert gravity['gravity_scales'] == [0.1, 0.15, 0.15, 0.65, 1.0, 1.0]
+    assert gravity['effort_limits'] == [5.0, 5.0, 5.0, 3.0, 3.0, 3.0]
 
 
 def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
@@ -90,3 +116,13 @@ def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
         assert config[group_name]['kp'][6] == 0.0
         assert config[group_name]['kd'][6] == 0.0
     assert config['effort_limits'][6] == 0.0
+
+
+def test_gravity_mode_uses_tuned_track_gains():
+    config = yaml.safe_load(
+        (PACKAGE_ROOT / 'config' / 'gravity_mit_gains.yaml').read_text())
+    assert config['track']['kp'] == [40.0] * 4 + [10.0] * 2 + [0.0]
+    assert config['track']['kd'] == [3.0] * 3 + [1.5] * 3 + [0.0]
+    assert config['idle']['kp'] == [0.0] * 7
+    assert config['idle']['kd'] == [1.0] * 6 + [0.0]
+    assert config['effort_limits'] == [5.0] * 3 + [3.0] * 3 + [0.0]

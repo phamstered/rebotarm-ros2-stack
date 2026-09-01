@@ -90,10 +90,12 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       if ((configured_joint_mask_ & protocol_bit) != 0U) {
         throw std::runtime_error("duplicate hardware joint: " + joint.name);
       }
-      if (joint.command_interfaces.size() != 1 ||
-        joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION)
+      if (joint.command_interfaces.size() != 2 ||
+        joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION ||
+        joint.command_interfaces[1].name != hardware_interface::HW_IF_EFFORT)
       {
-        throw std::runtime_error("each joint must export one position command interface");
+        throw std::runtime_error(
+                "command interface order must be position, effort for every joint");
       }
       if (joint.state_interfaces.size() != 3) {
         throw std::runtime_error("each joint must export position, velocity and effort state interfaces");
@@ -189,12 +191,15 @@ std::vector<hardware_interface::StateInterface> MicroRosSystem::export_state_int
 std::vector<hardware_interface::CommandInterface> MicroRosSystem::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> interfaces;
-  interfaces.reserve(joint_names_.size());
+  interfaces.reserve(joint_names_.size() * 2);
   for (std::size_t i = 0; i < joint_names_.size(); ++i) {
     const auto protocol_index = configured_protocol_indices_[i];
     interfaces.emplace_back(
       joint_names_[i], hardware_interface::HW_IF_POSITION,
       &command_position_[protocol_index]);
+    interfaces.emplace_back(
+      joint_names_[i], hardware_interface::HW_IF_EFFORT,
+      &command_effort_[protocol_index]);
   }
   return interfaces;
 }
@@ -213,6 +218,7 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
   state_velocity_ = feedback_.velocity;
   state_effort_ = feedback_.effort;
   command_position_.fill(0.0);
+  command_effort_.fill(0.0);
   for (const auto protocol_index : configured_protocol_indices_) {
     command_position_[protocol_index] = state_position_[protocol_index];
   }
@@ -288,7 +294,10 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     }
   } else if (
     command_mode_.load() == msg::JointCommand::MODE_HOLD &&
-    configured_positions_differ(targets, state_position_))
+    (configured_positions_differ(targets, state_position_) ||
+    std::any_of(
+      configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
+      [this](const auto index) {return std::abs(command_effort_[index]) > 1e-9;})))
   {
     command_mode_.store(msg::JointCommand::MODE_TRACK);
   }
@@ -337,8 +346,9 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     message.velocity[i] = static_cast<float>(command_velocity_[i]);
     message.kp[i] = static_cast<float>(gains.kp[i]);
     message.kd[i] = static_cast<float>(gains.kd[i]);
+    const double requested_effort = gravity_effort[i] + command_effort_[i];
     const double effort = message.mode == msg::JointCommand::MODE_DISABLE ? 0.0 :
-      std::clamp(gravity_effort[i], -effort_limits_[i], effort_limits_[i]);
+      std::clamp(requested_effort, -effort_limits_[i], effort_limits_[i]);
     message.effort[i] = static_cast<float>(effort);
   }
   command_publisher_->publish(message);

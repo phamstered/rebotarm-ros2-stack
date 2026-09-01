@@ -81,6 +81,7 @@ private:
   std::array<double, kJointCount> state_effort_{};
   std::array<double, kJointCount> command_position_{};
   std::array<double, kJointCount> command_velocity_{};
+  std::array<double, kJointCount> command_effort_{};
   std::array<double, kJointCount> lower_limits_{};
   std::array<double, kJointCount> upper_limits_{};
   std::array<double, kJointCount> effort_limits_{};
