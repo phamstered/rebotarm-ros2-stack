@@ -14,7 +14,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from microros_stm32h723_bridge.msg import HardwareStatus, JointCommand
 
 
-DEFAULT_STATE_TOPIC = "/joint1_trajectory_controller/controller_state"
+DEFAULT_STATE_TOPIC = "/arm_trajectory_controller/controller_state"
 DEFAULT_COMMAND_TOPIC = "/stm32/joint_commands"
 DEFAULT_STATUS_TOPIC = "/stm32/status"
 

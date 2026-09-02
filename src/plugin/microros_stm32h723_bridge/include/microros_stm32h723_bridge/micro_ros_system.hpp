@@ -14,7 +14,6 @@
 
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
-#include "microros_stm32h723_bridge/gravity_compensation.hpp"
 #include "microros_stm32h723_bridge/msg/hardware_status.hpp"
 #include "microros_stm32h723_bridge/msg/joint_command.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
@@ -106,7 +105,6 @@ private:
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread executor_thread_;
 
-  GravityCompensation gravity_;
   std::vector<std::string> joint_names_;
   std::vector<std::size_t> configured_protocol_indices_;
   std::atomic<uint8_t> command_mode_{msg::JointCommand::MODE_HOLD};
@@ -121,7 +119,6 @@ private:
   uint32_t disable_sequence_{0};
   uint32_t required_joint_mask_{0x7FU};
   uint32_t configured_joint_mask_{0U};
-  bool gravity_enabled_{true};
   double zero_tolerance_{0.03};
   std::string command_topic_{"/stm32/joint_commands"};
   std::string state_topic_{"/stm32/joint_states"};

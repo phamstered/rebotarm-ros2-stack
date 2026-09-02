@@ -1,11 +1,10 @@
 <?xml version="1.0"?>
-<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm_single_joint">
-  <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/single_joint_mit_gains.yaml"/>
-  <xacro:arg name="model_urdf_path" default="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm_arm">
+  <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/arm_mit_gains.yaml"/>
 
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
 
-  <ros2_control name="Stm32H723SingleJointSystem" type="system">
+  <ros2_control name="Stm32H723ArmSystem" type="system">
     <hardware>
       <plugin>microros_stm32h723_bridge/MicroRosSystem</plugin>
       <param name="command_topic">/stm32/joint_commands</param>
@@ -16,10 +15,7 @@
       <param name="return_duration_ms">3000</param>
       <param name="zero_tolerance">0.03</param>
       <param name="required_joint_mask">0x3F</param>
-      <param name="enable_gravity_compensation">false</param>
       <param name="gains_file">$(arg gains_file)</param>
-      <param name="model_urdf_path">$(arg model_urdf_path)</param>
-      <param name="joint4_gravity_scale">0.85</param>
     </hardware>
 
     <joint name="joint1">

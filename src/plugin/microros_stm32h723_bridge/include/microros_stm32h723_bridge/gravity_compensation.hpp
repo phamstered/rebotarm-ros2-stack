@@ -16,8 +16,7 @@ public:
 
   void initialize(
     const std::string & urdf_path,
-    const std::vector<std::string> & hardware_joint_names,
-    double joint4_scale);
+    const std::vector<std::string> & hardware_joint_names);
 
   std::vector<double> compute(const std::vector<double> & hardware_positions);
   bool initialized() const noexcept;

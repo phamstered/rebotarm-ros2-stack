@@ -1,7 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm">
   <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/mit_gains.yaml"/>
-  <xacro:arg name="model_urdf_path" default="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
   <xacro:arg name="required_joint_mask" default="0x7f"/>
 
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
@@ -18,8 +17,6 @@
       <param name="zero_tolerance">0.03</param>
       <param name="required_joint_mask">$(arg required_joint_mask)</param>
       <param name="gains_file">$(arg gains_file)</param>
-      <param name="model_urdf_path">$(arg model_urdf_path)</param>
-      <param name="joint4_gravity_scale">0.85</param>
     </hardware>
 
     <xacro:macro name="stm32_joint" params="name lower upper">
@@ -28,6 +25,7 @@
           <param name="min">${lower}</param>
           <param name="max">${upper}</param>
         </command_interface>
+        <command_interface name="effort"/>
         <state_interface name="position"/>
         <state_interface name="velocity"/>
         <state_interface name="effort"/>

@@ -6,7 +6,7 @@
 # 控制器管理器：MoveItSimpleControllerManager
 #   - 最简单的控制器管理器，直接通过 action 接口发送轨迹
 #
-# joint1_trajectory_controller:
+# arm_trajectory_controller:
 #   - 类型: FollowJointTrajectory（标准轨迹跟踪 action）
 #   - 控制 joint1 ~ joint6（6 自由度臂）
 #   - action 命名空间: follow_joint_trajectory
@@ -19,9 +19,9 @@ moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControll
 
 moveit_simple_controller_manager:
   controller_names:
-    - joint1_trajectory_controller
+    - arm_trajectory_controller
 
-  joint1_trajectory_controller:
+  arm_trajectory_controller:
     type: FollowJointTrajectory
     joints:
       - joint1

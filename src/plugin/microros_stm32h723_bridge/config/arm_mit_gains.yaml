@@ -1,4 +1,4 @@
-# Joint1-6 RETURN/HOLD gains match the legacy follower driver; TRACK is tuned separately.
+# Arm joint1-6 RETURN/HOLD gains match the legacy follower driver; TRACK is tuned separately.
 # The inactive gripper protocol slot remains zero.
 return:
   kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 0.0]

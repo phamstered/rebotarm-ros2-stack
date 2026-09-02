@@ -36,22 +36,6 @@ std::string parameter_or(
   return item == info.hardware_parameters.end() ? fallback : item->second;
 }
 
-bool bool_parameter_or(
-  const hardware_interface::HardwareInfo & info, const std::string & key, bool fallback)
-{
-  const auto item = info.hardware_parameters.find(key);
-  if (item == info.hardware_parameters.end()) {
-    return fallback;
-  }
-  if (item->second == "true" || item->second == "1") {
-    return true;
-  }
-  if (item->second == "false" || item->second == "0") {
-    return false;
-  }
-  throw std::invalid_argument("invalid boolean hardware parameter: " + key);
-}
-
 }  // namespace
 
 MicroRosSystem::~MicroRosSystem()
@@ -131,7 +115,6 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       throw std::runtime_error(
               "required_joint_mask must exactly match joints exported by ros2_control");
     }
-    gravity_enabled_ = bool_parameter_or(info_, "enable_gravity_compensation", true);
     zero_tolerance_ = parameter_or(info_, "zero_tolerance", 0.03);
 
     if (!load_gains(parameter_or(info_, "gains_file", ""))) {
@@ -143,12 +126,6 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
     }
     for (std::size_t i = 0; i < kJointCount; ++i) {
       effort_limits_[i] = effort_node[i].as<double>();
-    }
-
-    if (gravity_enabled_) {
-      gravity_.initialize(
-        parameter_or(info_, "model_urdf_path", ""), joint_names_,
-        parameter_or(info_, "joint4_gravity_scale", 0.85));
     }
 
     node_ = std::make_shared<rclcpp::Node>("microros_stm32h723_hardware");
@@ -309,24 +286,6 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     command_mode_.store(msg::JointCommand::MODE_TRACK);
   }
 
-  std::array<double, kJointCount> gravity_effort{};
-  if (gravity_enabled_) {
-    std::vector<double> configured_positions;
-    configured_positions.reserve(configured_protocol_indices_.size());
-    for (const auto protocol_index : configured_protocol_indices_) {
-      configured_positions.push_back(state_position_[protocol_index]);
-    }
-    try {
-      const auto configured_effort = gravity_.compute(configured_positions);
-      for (std::size_t i = 0; i < configured_effort.size(); ++i) {
-        gravity_effort[configured_protocol_indices_[i]] = configured_effort[i];
-      }
-    } catch (const std::exception & error) {
-      RCLCPP_ERROR(node_->get_logger(), "Gravity computation failed: %s", error.what());
-      return hardware_interface::return_type::ERROR;
-    }
-  }
-
   msg::JointCommand message;
   message.header.stamp = node_->now();
   message.mode = command_mode_.load();
@@ -353,7 +312,7 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     message.velocity[i] = static_cast<float>(command_velocity_[i]);
     message.kp[i] = static_cast<float>(gains.kp[i]);
     message.kd[i] = static_cast<float>(gains.kd[i]);
-    const double requested_effort = gravity_effort[i] + command_effort_[i];
+    const double requested_effort = command_effort_[i];
     const double effort = message.mode == msg::JointCommand::MODE_DISABLE ? 0.0 :
       std::clamp(requested_effort, -effort_limits_[i], effort_limits_[i]);
     message.effort[i] = static_cast<float>(effort);

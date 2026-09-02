@@ -50,7 +50,7 @@ controller_interface::CallbackReturn GravityCompensationController::on_configure
       ament_index_cpp::get_package_share_directory("rebotarm_gazebo") + "/urdf/rebotarm.urdf";
   }
   try {
-    gravity_.initialize(model_urdf_path_, joints_, 1.0);
+    gravity_.initialize(model_urdf_path_, joints_);
   } catch (const std::exception & error) {
     RCLCPP_ERROR(get_node()->get_logger(), "Gravity model initialization failed: %s", error.what());
     return controller_interface::CallbackReturn::ERROR;

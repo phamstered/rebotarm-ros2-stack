@@ -41,7 +41,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 set(HARDWARE_LIBRARY ${PROJECT_NAME}_hardware)
 add_library(${HARDWARE_LIBRARY} SHARED
-  src/gravity_compensation.cpp
   src/micro_ros_system.cpp
   src/plugin_export.cpp
 )
@@ -58,7 +57,7 @@ ament_target_dependencies(${HARDWARE_LIBRARY}
   std_msgs
   std_srvs
 )
-target_link_libraries(${HARDWARE_LIBRARY} pinocchio::pinocchio yaml-cpp)
+target_link_libraries(${HARDWARE_LIBRARY} yaml-cpp)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} rosidl_typesupport_cpp)
 target_link_libraries(${HARDWARE_LIBRARY} "${cpp_typesupport_target}")
 

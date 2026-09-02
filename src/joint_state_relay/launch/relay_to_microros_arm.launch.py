@@ -9,7 +9,7 @@ def generate_launch_description():
     default_config = PathJoinSubstitution([
         FindPackageShare('joint_state_relay'),
         'config',
-        'relay_microros_single_joint.yaml',
+        'relay_microros_arm.yaml',
     ])
 
     return LaunchDescription([
@@ -17,7 +17,7 @@ def generate_launch_description():
         Node(
             package='joint_state_relay',
             executable='relay_node',
-            name='joint1_teleop_relay',
+            name='arm_teleop_relay',
             parameters=[{
                 'config_path': LaunchConfiguration('config_path'),
             }],

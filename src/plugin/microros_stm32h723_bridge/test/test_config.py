@@ -35,23 +35,28 @@ def test_hardware_status_exposes_active_mask_and_ack_sequence():
 
 def test_state_only_launch_uses_read_only_republisher():
     launch_source = (
-        PACKAGE_ROOT / 'launch' / 'stm32h723_single_joint.launch.py'
+        PACKAGE_ROOT / 'launch' / 'stm32h723_arm.launch.py'
     ).read_text()
     assert "'state_only'" in launch_source
     assert "default_value='false'" in launch_source
     assert "executable='stm32_state_republisher.py'" in launch_source
     assert 'condition=IfCondition(state_only)' in launch_source
-    assert launch_source.count('condition=UnlessCondition(state_only)') == 3
-    assert "'controller_mode'" in launch_source
+    assert launch_source.count('condition=UnlessCondition(state_only)') == 2
+    assert "'position_controller'" in launch_source
+    assert "'enable_gravity_controller'" in launch_source
+    assert "choices=['teleop', 'trajectory', 'none']" in launch_source
+    assert 'condition=teleop_active' in launch_source
+    assert 'condition=trajectory_active' in launch_source
+    assert 'condition=gravity_active' in launch_source
     assert 'gravity_compensation_controller' in launch_source
 
     cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
     assert 'scripts/stm32_state_republisher.py' in cmake_source
 
 
-def test_bringup_profile_exports_joints_1_to_6_with_gravity():
+def test_bringup_profile_exports_separate_position_and_effort_interfaces():
     xacro_path = (
-        PACKAGE_ROOT / 'urdf' / 'rebotarm.single_joint.micro_ros.xacro')
+        PACKAGE_ROOT / 'urdf' / 'rebotarm.arm.micro_ros.xacro')
     root = ET.parse(xacro_path).getroot()
     ros2_control = root.find('ros2_control')
     assert ros2_control is not None
@@ -63,9 +68,9 @@ def test_bringup_profile_exports_joints_1_to_6_with_gravity():
         for item in ros2_control.findall('./hardware/param')
     }
     assert parameters['required_joint_mask'] == '0x3F'
-    assert parameters['enable_gravity_compensation'] == 'false'
-    assert parameters['model_urdf_path'] == '$(arg model_urdf_path)'
-    assert parameters['joint4_gravity_scale'] == '0.85'
+    assert 'enable_gravity_compensation' not in parameters
+    assert 'model_urdf_path' not in parameters
+    assert 'joint4_gravity_scale' not in parameters
     assert int(parameters['state_timeout_ms']) >= 500
     for joint in ros2_control.findall('joint'):
         assert [interface.attrib['name'] for interface in
@@ -74,20 +79,20 @@ def test_bringup_profile_exports_joints_1_to_6_with_gravity():
 
 def test_bringup_controllers_claim_joints_1_to_6():
     config = yaml.safe_load(
-        (PACKAGE_ROOT / 'config' / 'single_joint_controllers.yaml').read_text())
+        (PACKAGE_ROOT / 'config' / 'arm_controllers.yaml').read_text())
     expected_joints = [f'joint{i}' for i in range(1, 7)]
-    assert config['joint1_trajectory_controller']['ros__parameters'][
+    assert config['arm_trajectory_controller']['ros__parameters'][
         'joints'] == expected_joints
-    assert config['joint1_trajectory_controller']['ros__parameters'][
+    assert config['arm_trajectory_controller']['ros__parameters'][
         'allow_partial_joints_goal'] is True
     manager = config['controller_manager']['ros__parameters']
-    assert manager['joint1_trajectory_controller']['type'] == (
+    assert manager['arm_trajectory_controller']['type'] == (
         'joint_trajectory_controller/JointTrajectoryController')
-    assert manager['joint1_teleop_controller']['type'] == (
+    assert manager['arm_teleop_controller']['type'] == (
         'position_controllers/JointGroupPositionController')
     assert manager['gravity_compensation_controller']['type'] == (
         'microros_stm32h723_bridge/GravityCompensationController')
-    assert config['joint1_teleop_controller']['ros__parameters']['joints'] == (
+    assert config['arm_teleop_controller']['ros__parameters']['joints'] == (
         expected_joints)
     broadcaster = config['joint_state_broadcaster']['ros__parameters']
     assert broadcaster['joints'] == expected_joints
@@ -98,9 +103,26 @@ def test_bringup_controllers_claim_joints_1_to_6():
     assert gravity['effort_limits'] == [5.0, 5.0, 5.0, 3.0, 3.0, 3.0]
 
 
+def test_gravity_is_computed_only_by_the_effort_controller():
+    hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
+    controller_source = (
+        PACKAGE_ROOT / 'src' / 'gravity_compensation_controller.cpp').read_text()
+    cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
+
+    assert 'enable_gravity_compensation' not in hardware_source
+    assert 'joint4_gravity_scale' not in hardware_source
+    assert 'gravity_.compute' not in hardware_source
+    assert 'gravity_.compute' in controller_source
+    assert 'HW_IF_EFFORT' in controller_source
+    assert 'HW_IF_POSITION' in controller_source
+    assert (
+        'target_link_libraries(${HARDWARE_LIBRARY} yaml-cpp)'
+        in cmake_source)
+
+
 def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
     config = yaml.safe_load(
-        (PACKAGE_ROOT / 'config' / 'single_joint_mit_gains.yaml').read_text())
+        (PACKAGE_ROOT / 'config' / 'arm_mit_gains.yaml').read_text())
     expected_gains = {
         'return': ([30.0] * 3 + [15.0] * 3, [3.0] * 3 + [2.0] * 3),
         'hold': ([20.0] * 3 + [10.0] * 3, [2.0] * 3 + [1.5] * 3),

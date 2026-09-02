@@ -3,7 +3,7 @@ mode: "ros2_control"
 
 leader_topic: "/leader/joint_states"
 follower_state_topic: "/joint_states"
-follower_command_topic: "/joint1_teleop_controller/commands"
+follower_command_topic: "/arm_teleop_controller/commands"
 
 # Map leader positions directly into follower joint coordinates. Calibrate
 # follower zeros and offsets before enabling teleoperation.

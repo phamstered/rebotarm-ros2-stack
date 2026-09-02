@@ -3,9 +3,9 @@ controller_manager:
     update_rate: 100
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
-    joint1_trajectory_controller:
+    arm_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
-    joint1_teleop_controller:
+    arm_teleop_controller:
       type: position_controllers/JointGroupPositionController
     gravity_compensation_controller:
       type: microros_stm32h723_bridge/GravityCompensationController
@@ -15,7 +15,7 @@ joint_state_broadcaster:
     joints: [joint1, joint2, joint3, joint4, joint5, joint6]
     interfaces: [position, velocity, effort]
 
-joint1_trajectory_controller:
+arm_trajectory_controller:
   ros__parameters:
     joints: [joint1, joint2, joint3, joint4, joint5, joint6]
     command_interfaces: [position]
@@ -25,7 +25,7 @@ joint1_trajectory_controller:
     allow_partial_joints_goal: true
     allow_nonzero_velocity_at_trajectory_end: false
 
-joint1_teleop_controller:
+arm_teleop_controller:
   ros__parameters:
     joints: [joint1, joint2, joint3, joint4, joint5, joint6]
 

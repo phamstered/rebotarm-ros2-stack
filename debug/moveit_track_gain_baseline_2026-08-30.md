@@ -4,8 +4,8 @@
 
 - 日期：2026-08-30（Asia/Shanghai）
 - 平台：Jetson + STM32H723 + `MicroRosSystem`
-- 控制器：`joint1_trajectory_controller`（active）
-- 遥操作控制器：`joint1_teleop_controller`（inactive）
+- 控制器：`arm_trajectory_controller`（active）
+- 遥操作控制器：`arm_teleop_controller`（inactive）
 - 命令模式：`mode=1`（TRACK）
 - 重力补偿：关闭
 - STM32 状态：`fault_code=0`，命令序列持续确认
@@ -28,7 +28,7 @@
 | joint5 | 10.0 | 1.5 | 0.0 |
 | joint6 | 10.0 | 1.5 | 0.0 |
 
-配置来源：`src/plugin/microros_stm32h723_bridge/config/single_joint_mit_gains.yaml`。
+配置来源：`src/plugin/microros_stm32h723_bridge/config/arm_mit_gains.yaml`。
 
 ## 基线 A：MoveIt `Forward` 姿态
 
@@ -55,7 +55,7 @@
 采样命令：
 
 ```bash
-ros2 topic echo /joint1_trajectory_controller/controller_state --once
+ros2 topic echo /arm_trajectory_controller/controller_state --once
 ros2 topic echo /stm32/joint_commands --once
 ros2 topic echo /stm32/status --once
 ```
@@ -70,7 +70,7 @@ ros2 topic echo /stm32/status --once
 - joint1–3：`kp=30.0, kd=3.0`
 - joint4–6：`kp=10.0, kd=1.5`（未变）
 - STM32：`mode=1`、`fault_code=0`
-- `joint1_trajectory_controller`：active
+- `arm_trajectory_controller`：active
 
 首次采样：
 
