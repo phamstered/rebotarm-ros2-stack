@@ -1,0 +1,16 @@
+# Initial low-gain profile for calibrated gripper teleoperation.
+# The gripper RETURN stiffness is zero so safe-stop never drives it closed.
+return:
+  kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 0.0]
+  kd: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 1.0]
+hold:
+  kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0, 2.0]
+  kd: [2.0, 2.0, 2.0, 1.5, 1.5, 1.5, 0.5]
+track:
+  kp: [40.0, 40.0, 40.0, 40.0, 10.0, 10.0, 2.0]
+  kd: [3.0, 3.0, 3.0, 1.5, 1.5, 1.5, 0.5]
+idle:
+  kp: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+effort_limits: [5.0, 5.0, 5.0, 3.0, 3.0, 3.0, 2.0]

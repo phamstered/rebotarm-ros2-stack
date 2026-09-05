@@ -59,6 +59,15 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
   }
 
   try {
+    position_scales_.fill(1.0);
+    position_offsets_.fill(0.0);
+    position_scales_[kJointCount - 1] = parameter_or(
+      info_, "gripper_position_scale", 1.0);
+    position_offsets_[kJointCount - 1] = parameter_or(
+      info_, "gripper_position_offset", 0.0);
+    if (std::abs(position_scales_[kJointCount - 1]) < 1e-12) {
+      throw std::runtime_error("gripper_position_scale must be non-zero");
+    }
     joint_names_.reserve(info_.joints.size());
     configured_protocol_indices_.reserve(info_.joints.size());
     for (const auto & joint : info_.joints) {
@@ -308,8 +317,11 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
       message.effort[i] = 0.0F;
       continue;
     }
-    message.position[i] = gains.kp[i] == 0.0 ? 0.0F : static_cast<float>(targets[i]);
-    message.velocity[i] = static_cast<float>(command_velocity_[i]);
+    const double raw_position =
+      (targets[i] - position_offsets_[i]) / position_scales_[i];
+    const double raw_velocity = command_velocity_[i] / position_scales_[i];
+    message.position[i] = gains.kp[i] == 0.0 ? 0.0F : static_cast<float>(raw_position);
+    message.velocity[i] = static_cast<float>(raw_velocity);
     message.kp[i] = static_cast<float>(gains.kp[i]);
     message.kd[i] = static_cast<float>(gains.kd[i]);
     const double requested_effort = command_effort_[i];
@@ -342,8 +354,11 @@ void MicroRosSystem::joint_state_callback(const sensor_msgs::msg::JointState::Sh
       return;
     }
     const auto protocol_index = configured_protocol_indices_[i];
-    next.position[protocol_index] = message->position[item->second];
-    next.velocity[protocol_index] = message->velocity[item->second];
+    next.position[protocol_index] =
+      message->position[item->second] * position_scales_[protocol_index] +
+      position_offsets_[protocol_index];
+    next.velocity[protocol_index] =
+      message->velocity[item->second] * position_scales_[protocol_index];
     next.effort[protocol_index] = message->effort[item->second];
   }
   if (!all_finite(next.position) || !all_finite(next.velocity) || !all_finite(next.effort)) {
@@ -443,7 +458,10 @@ bool MicroRosSystem::configured_joints_at_zero() const
 {
   return std::all_of(
     configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
-    [this](std::size_t index) {return std::abs(state_position_[index]) <= zero_tolerance_;});
+    [this](std::size_t index) {
+      return std::abs(return_gains_.kp[index]) <= 1e-9 ||
+             std::abs(state_position_[index]) <= zero_tolerance_;
+    });
 }
 
 const MicroRosSystem::Gains & MicroRosSystem::selected_gains() const

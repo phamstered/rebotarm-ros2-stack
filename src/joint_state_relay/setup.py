@@ -24,6 +24,7 @@ setup(
         'console_scripts': [
             'relay_node = joint_state_relay.relay_node:main',
             'domain_bridge = joint_state_relay.domain_bridge:main',
+            'calibrate_gripper = joint_state_relay.gripper_calibration:main',
         ],
     },
 )

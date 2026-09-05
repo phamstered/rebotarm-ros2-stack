@@ -13,6 +13,7 @@
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <exec_depend>microros_stm32h723_bridge</exec_depend>
   <exec_depend>stararm102_description</exec_depend>
   <exec_depend>rebotarm_hw_driver</exec_depend>
 

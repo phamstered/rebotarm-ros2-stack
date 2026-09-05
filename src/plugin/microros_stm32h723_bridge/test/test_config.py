@@ -44,6 +44,7 @@ def test_state_only_launch_uses_read_only_republisher():
     assert launch_source.count('condition=UnlessCondition(state_only)') == 2
     assert "'position_controller'" in launch_source
     assert "'enable_gravity_controller'" in launch_source
+    assert "'enable_gripper'" in launch_source
     assert "choices=['teleop', 'trajectory', 'none']" in launch_source
     assert 'condition=teleop_active' in launch_source
     assert 'condition=trajectory_active' in launch_source
@@ -67,7 +68,11 @@ def test_bringup_profile_exports_separate_position_and_effort_interfaces():
         item.attrib['name']: (item.text or '').strip()
         for item in ros2_control.findall('./hardware/param')
     }
-    assert parameters['required_joint_mask'] == '0x3F'
+    xacro_source = xacro_path.read_text()
+    assert '<param name="required_joint_mask">0x3F</param>' in xacro_source
+    assert '<param name="required_joint_mask">0x7F</param>' in xacro_source
+    assert parameters['gripper_position_scale'] == '-0.008612826752'
+    assert parameters['gripper_position_offset'] == '0.004282757541'
     assert 'enable_gravity_compensation' not in parameters
     assert 'model_urdf_path' not in parameters
     assert 'joint4_gravity_scale' not in parameters
@@ -90,12 +95,16 @@ def test_bringup_controllers_claim_joints_1_to_6():
         'joint_trajectory_controller/JointTrajectoryController')
     assert manager['arm_teleop_controller']['type'] == (
         'position_controllers/JointGroupPositionController')
+    assert manager['gripper_teleop_controller']['type'] == (
+        'position_controllers/JointGroupPositionController')
     assert manager['gravity_compensation_controller']['type'] == (
         'microros_stm32h723_bridge/GravityCompensationController')
     assert config['arm_teleop_controller']['ros__parameters']['joints'] == (
         expected_joints)
+    assert config['gripper_teleop_controller']['ros__parameters']['joints'] == [
+        'gripper_finger_left_joint']
     broadcaster = config['joint_state_broadcaster']['ros__parameters']
-    assert broadcaster['joints'] == expected_joints
+    assert 'joints' not in broadcaster
     assert broadcaster['interfaces'] == ['position', 'velocity', 'effort']
     gravity = config['gravity_compensation_controller']['ros__parameters']
     assert gravity['joints'] == expected_joints
@@ -150,3 +159,24 @@ def test_gravity_mode_uses_zero_position_stiffness():
     assert config['idle']['kp'] == [0.0] * 7
     assert config['idle']['kd'] == [1.0] * 6 + [0.0]
     assert config['effort_limits'] == [5.0] * 3 + [3.0] * 3 + [0.0]
+
+
+def test_hardware_supports_calibrated_gripper_position_conversion():
+    source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
+    assert '"gripper_position_scale"' in source
+    assert '"gripper_position_offset"' in source
+    assert '(targets[i] - position_offsets_[i]) / position_scales_[i]' in source
+    assert 'message->position[item->second] * position_scales_' in source
+
+
+def test_gripper_gain_profile_never_returns_to_closed_position():
+    config = yaml.safe_load(
+        (PACKAGE_ROOT / 'config' / 'arm_gripper_mit_gains.yaml').read_text())
+    assert config['return']['kp'][6] == 0.0
+    assert config['return']['kd'][6] == 1.0
+    assert config['hold']['kp'][6] == 2.0
+    assert config['track']['kp'][6] == 2.0
+    assert config['effort_limits'][6] == 2.0
+
+    hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
+    assert 'std::abs(return_gains_.kp[index]) <= 1e-9' in hardware_source

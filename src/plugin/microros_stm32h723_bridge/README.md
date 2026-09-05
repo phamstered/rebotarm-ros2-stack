@@ -169,6 +169,62 @@ start Controller Manager, load MicroRosSystem, activate controllers, or publish
 `/stm32/joint_commands`. Use it to compare the real follower pose with the URDF
 before writing motor zero offsets.
 
+## Gripper endpoint calibration
+
+The STM32 gripper channel must be converted from its raw actuator position to
+the prismatic metre unit used by `gripper_finger_left_joint`. Do not add the
+gripper to ros2_control or enable a gripper controller before this conversion
+is measured.
+
+With the leader driver and micro-ROS Agent publishing, first confirm that the
+STM32 is disabled and the gripper bit is present:
+
+```bash
+ros2 topic echo /stm32/status --once
+# Expected: mode: 3, active_joint_mask includes 0x40, fault_code: 0
+```
+
+Run the read-only interactive tool and manually place each gripper at its
+closed and open endpoints when prompted:
+
+```bash
+ros2 run joint_state_relay calibrate_gripper
+```
+
+Measure the actual single-finger travel with a ruler or caliper and rerun, for
+example with a measured 20 mm travel:
+
+```bash
+ros2 run joint_state_relay calibrate_gripper --follower-travel-m 0.020
+```
+
+The output contains `gripper_position_scale` and
+`gripper_position_offset` for `MicroRosSystem`, plus the `joint7_left` relay
+mapping. The tool never publishes a command and refuses to capture while the
+STM32 is not in `MODE_DISABLE`.
+
+The calibrated 50 mm range currently used by this repository is:
+
+```text
+leader:       closed 0.005235988, open 0.945968455 rad
+STM32 raw:    closed 0.497253418, open -5.308041573
+ROS gripper:  closed 0.0, open 0.05 m
+```
+
+Start the first low-gain gripper teleoperation test explicitly:
+
+```bash
+./scripts/start_arm_teleop.sh \
+  --position-controller=teleop --gripper=true \
+  --gravity=false --start-leader=true --clean=true
+```
+
+Without `--gripper=true`, the existing six-joint behavior is unchanged. The
+gripper command is published separately on
+`/gripper_teleop_controller/commands`, limited to 0.02 m/s and clamped to
+0–0.05 m. Initial gripper HOLD/TRACK gains are 2.0/0.5. Safe-stop applies zero
+return stiffness to the gripper, so shutdown does not command it closed.
+
 Return to trajectory control with:
 
 ```bash

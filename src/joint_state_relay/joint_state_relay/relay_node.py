@@ -29,6 +29,8 @@ class JointStateRelay(Node):
         self._joints_cfg = self._config['joints']
         self._mapping = self._config['joint_mapping']
         self._max_vel = self._config.get('max_velocity', 3.0)
+        self._gripper_max_vel = self._config.get(
+            'gripper_max_velocity', 0.01)
         self._timeout = self._config.get('command_timeout', 0.1)
         self._publish_rate = self._config.get('publish_rate', 100.0)
         self._relative_mode = self._config.get('relative_mode', False)
@@ -55,6 +57,7 @@ class JointStateRelay(Node):
 
         self._last_leader_positions = None
         self._last_published_positions = None
+        self._last_published_gripper_positions = None
         self._last_cmd_time = self.get_clock().now()
         self._goal_active = False
         self._gripper_goal_active = False
@@ -82,6 +85,13 @@ class JointStateRelay(Node):
         elif self._mode == 'ros2_control':
             self._pub = self.create_publisher(
                 Float64MultiArray, self._config['follower_command_topic'], 10)
+            gripper_command_topic = self._config.get('gripper_command_topic')
+            self._gripper_pub = None
+            if self._gripper_joint_names and gripper_command_topic:
+                self._gripper_pub = self.create_publisher(
+                    Float64MultiArray, gripper_command_topic, 10)
+                self.get_logger().info(
+                    f'Gripper output: {gripper_command_topic}')
             if self._relative_mode or self._max_vel > 0:
                 self._follower_state_sub = self.create_subscription(
                     JointState, self._config['follower_state_topic'],
@@ -139,6 +149,9 @@ class JointStateRelay(Node):
             if leader_name in positions and np.isfinite(positions[leader_name]):
                 cfg = self._joints_cfg[follower_name]
                 pos = positions[leader_name]
+                if 'leader_limit' in cfg:
+                    leader_lo, leader_hi = cfg['leader_limit']
+                    pos = max(leader_lo, min(leader_hi, pos))
                 if self._relative_mode:
                     if (follower_name not in self._follower_positions or
                             not self._follower_state_is_fresh()):
@@ -199,6 +212,7 @@ class JointStateRelay(Node):
                 self._leader_origins.clear()
                 self._follower_origins.clear()
                 self._last_published_positions = None
+                self._last_published_gripper_positions = None
             return None
 
         positions = []
@@ -257,12 +271,60 @@ class JointStateRelay(Node):
 
     def _publish_ros2_control(self):
         positions = self._transform_positions()
-        if positions is None:
+        if positions is not None:
+            msg = Float64MultiArray()
+            msg.data = [float(position) for position in positions]
+            self._pub.publish(msg)
+
+        self._publish_ros2_control_gripper()
+
+    def _publish_ros2_control_gripper(self):
+        if self._gripper_pub is None or self._last_leader_positions is None:
             return
+        elapsed = (
+            self.get_clock().now() - self._last_cmd_time
+        ).nanoseconds / 1e9
+        if elapsed > self._timeout:
+            return
+
+        positions = []
+        for name in self._gripper_joint_names:
+            if name not in self._last_leader_positions:
+                return
+            cfg = self._joints_cfg[name]
+            lo, hi = cfg['follower_limit']
+            positions.append(max(lo, min(hi, self._last_leader_positions[name])))
+
+        if self._gripper_max_vel > 0 and self._last_published_gripper_positions is None:
+            follower_state_ready = (
+                self._follower_state_is_fresh() and
+                all(name in self._follower_positions
+                    for name in self._gripper_joint_names)
+            )
+            if not follower_state_ready:
+                return
+            self._last_published_gripper_positions = [
+                self._follower_positions[name]
+                for name in self._gripper_joint_names
+            ]
+
+        if (self._gripper_max_vel > 0 and
+                self._last_published_gripper_positions is not None):
+            max_delta = self._gripper_max_vel / self._publish_rate
+            limited = []
+            for index, position in enumerate(positions):
+                previous = self._last_published_gripper_positions[index]
+                delta = position - previous
+                if abs(delta) > max_delta:
+                    position = previous + max_delta * np.sign(delta)
+                limited.append(position)
+            positions = limited
+
+        self._last_published_gripper_positions = positions
 
         msg = Float64MultiArray()
         msg.data = [float(position) for position in positions]
-        self._pub.publish(msg)
+        self._gripper_pub.publish(msg)
 
     def _send_gripper_command(self, mapped_positions):
         """Send gripper position command to gripper_controller."""

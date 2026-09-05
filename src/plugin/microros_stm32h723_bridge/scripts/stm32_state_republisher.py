@@ -7,7 +7,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 
 
-JOINT_NAMES = tuple(f'joint{index}' for index in range(1, 7))
+ARM_JOINT_NAMES = tuple(f'joint{index}' for index in range(1, 7))
+GRIPPER_JOINT_NAME = 'gripper_finger_left_joint'
 
 
 class Stm32StateRepublisher(Node):
@@ -15,9 +16,20 @@ class Stm32StateRepublisher(Node):
         super().__init__('stm32_state_republisher')
         self.declare_parameter('input_topic', '/stm32/joint_states')
         self.declare_parameter('output_topic', '/joint_states')
+        self.declare_parameter('include_gripper', False)
+        self.declare_parameter('gripper_position_scale', 1.0)
+        self.declare_parameter('gripper_position_offset', 0.0)
 
         input_topic = self.get_parameter('input_topic').value
         output_topic = self.get_parameter('output_topic').value
+        include_gripper = self.get_parameter('include_gripper').value
+        self._gripper_position_scale = self.get_parameter(
+            'gripper_position_scale').value
+        self._gripper_position_offset = self.get_parameter(
+            'gripper_position_offset').value
+        self._joint_names = list(ARM_JOINT_NAMES)
+        if include_gripper:
+            self._joint_names.append(GRIPPER_JOINT_NAME)
         input_qos = QoSProfile(
             depth=1,
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -39,7 +51,7 @@ class Stm32StateRepublisher(Node):
 
     def _state_callback(self, message):
         indices = {name: index for index, name in enumerate(message.name)}
-        missing = [name for name in JOINT_NAMES if name not in indices]
+        missing = [name for name in self._joint_names if name not in indices]
         if missing:
             if not self._missing_joints_logged:
                 self.get_logger().error(
@@ -51,21 +63,29 @@ class Stm32StateRepublisher(Node):
             self.get_logger().error('Ignoring STM32 state with invalid positions')
             return
 
-        ordered_indices = [indices[name] for name in JOINT_NAMES]
+        ordered_indices = [indices[name] for name in self._joint_names]
         output = JointState()
         output.header = message.header
-        output.name = list(JOINT_NAMES)
+        output.name = self._joint_names
         output.position = [message.position[index] for index in ordered_indices]
+        if GRIPPER_JOINT_NAME in self._joint_names:
+            gripper_index = self._joint_names.index(GRIPPER_JOINT_NAME)
+            output.position[gripper_index] = (
+                output.position[gripper_index] * self._gripper_position_scale +
+                self._gripper_position_offset)
         if len(message.velocity) == len(message.name):
             output.velocity = [
                 message.velocity[index] for index in ordered_indices]
+            if GRIPPER_JOINT_NAME in self._joint_names:
+                output.velocity[gripper_index] *= self._gripper_position_scale
         if len(message.effort) == len(message.name):
             output.effort = [message.effort[index] for index in ordered_indices]
         self._publisher.publish(output)
 
         self._missing_joints_logged = False
         if not self._first_state_logged:
-            self.get_logger().info('Publishing ordered joint1-6 feedback')
+            self.get_logger().info(
+                f'Publishing ordered feedback: {self._joint_names}')
             self._first_state_logged = True
 
 

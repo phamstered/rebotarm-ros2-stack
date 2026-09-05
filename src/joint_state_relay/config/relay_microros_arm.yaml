@@ -4,6 +4,7 @@ mode: "ros2_control"
 leader_topic: "/leader/joint_states"
 follower_state_topic: "/joint_states"
 follower_command_topic: "/arm_teleop_controller/commands"
+gripper_command_topic: "/gripper_teleop_controller/commands"
 
 # Map leader positions directly into follower joint coordinates. Calibrate
 # follower zeros and offsets before enabling teleoperation.
@@ -17,6 +18,7 @@ joint_mapping:
   joint4: joint4
   joint5: joint5
   joint6: joint6
+  joint7_left: gripper_finger_left_joint
 
 joints:
   joint1:
@@ -55,9 +57,16 @@ joints:
     leader_limit: [-3.14, 3.14]
     follower_limit: [-3.14, 3.14]
     deadband: 0.005
+  gripper_finger_left_joint:
+    sign: 0.053150073760
+    offset: -0.000278293135
+    leader_limit: [0.005235988, 0.945968455]
+    follower_limit: [0.0, 0.05]
+    deadband: 0.0002
 
 # Limit each follower joint to 1 rad/s. At 100 Hz, each command changes by at
 # most 0.01 rad and the first command ramp starts from measured follower state.
 max_velocity: 1.0
+gripper_max_velocity: 0.02
 command_timeout: 0.1
 publish_rate: 100.0

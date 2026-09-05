@@ -84,6 +84,8 @@ private:
   std::array<double, kJointCount> lower_limits_{};
   std::array<double, kJointCount> upper_limits_{};
   std::array<double, kJointCount> effort_limits_{};
+  std::array<double, kJointCount> position_scales_{};
+  std::array<double, kJointCount> position_offsets_{};
   std::array<double, kJointCount> return_start_{};
 
   Gains hold_gains_;

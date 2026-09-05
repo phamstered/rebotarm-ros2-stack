@@ -22,6 +22,7 @@ def generate_launch_description():
     state_only = LaunchConfiguration('state_only')
     position_controller = LaunchConfiguration('position_controller')
     enable_gravity_controller = LaunchConfiguration('enable_gravity_controller')
+    enable_gripper = LaunchConfiguration('enable_gripper')
     teleop_active = IfCondition(PythonExpression([
         "'", position_controller, "' == 'teleop' and '", state_only, "' == 'false'",
     ]))
@@ -42,11 +43,16 @@ def generate_launch_description():
         "'", enable_gravity_controller, "'.lower() != 'true' and '",
         state_only, "' == 'false'",
     ]))
+    gripper_active = IfCondition(PythonExpression([
+        "'", enable_gripper, "'.lower() == 'true' and '",
+        state_only, "' == 'false'",
+    ]))
 
     robot_description = {
         'robot_description': Command([
             FindExecutable(name='xacro'), ' ', xacro_file,
             ' gains_file:=', gains_file,
+            ' enable_gripper:=', enable_gripper,
         ])
     }
 
@@ -67,6 +73,12 @@ def generate_launch_description():
             'enable_gravity_controller',
             default_value='false',
             description='Activate the independent effort-only gravity controller.',
+        ),
+        DeclareLaunchArgument(
+            'enable_gripper',
+            default_value='false',
+            description=(
+                'Export and activate the calibrated gripper position path.'),
         ),
         DeclareLaunchArgument(
             'state_only',
@@ -99,9 +111,24 @@ def generate_launch_description():
             package='microros_stm32h723_bridge',
             executable='stm32_state_republisher.py',
             name='stm32_state_republisher',
-            parameters=[{'use_sim_time': use_sim_time}],
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'include_gripper': enable_gripper,
+                'gripper_position_scale': -0.008612826752,
+                'gripper_position_offset': 0.004282757541,
+            }],
             output='screen',
             condition=IfCondition(state_only),
+        ),
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'gripper_teleop_controller',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+            condition=gripper_active,
         ),
         Node(
             package='controller_manager',
