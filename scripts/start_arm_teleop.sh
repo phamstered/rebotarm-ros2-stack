@@ -15,6 +15,7 @@ START_LEADER="false"
 START_CONTROLLER="true"
 POSITION_CONTROLLER="teleop"
 ENABLE_GRAVITY_CONTROLLER="false"
+ENABLE_JOINT4_CALIBRATION="false"
 ENABLE_GRIPPER="false"
 CLEAN_BEFORE_START="true"
 DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
@@ -36,8 +37,9 @@ usage() {
     echo
     echo "  --position-controller=teleop|trajectory|none  Select the position controller (default: teleop)."
     echo "  --gravity=true|false  Enable the independent effort controller (default: false)."
+    echo "  --joint4-calibration=true|false  Run guarded joint4 calibration (default: false)."
     echo "  --gripper=true|false  Enable calibrated gripper teleoperation (default: false)."
-    echo "  --mode=teleop|gravity  Backward-compatible preset alias."
+    echo "  --mode=teleop|gravity|calibration  Backward-compatible preset alias."
     echo "  --start-leader=true   Start robo_driver in /leader namespace with lock disabled."
     echo "  --start-leader=false  Require an existing /leader/joint_states publisher (default)."
     echo "  --start-controller=true   Start ros2_control when it is not already running (default)."
@@ -60,13 +62,20 @@ for argument in "$@"; do
                 teleop)
                     POSITION_CONTROLLER="teleop"
                     ENABLE_GRAVITY_CONTROLLER="false"
+                    ENABLE_JOINT4_CALIBRATION="false"
                     ;;
                 gravity)
                     POSITION_CONTROLLER="none"
                     ENABLE_GRAVITY_CONTROLLER="true"
+                    ENABLE_JOINT4_CALIBRATION="false"
+                    ;;
+                calibration)
+                    POSITION_CONTROLLER="none"
+                    ENABLE_GRAVITY_CONTROLLER="false"
+                    ENABLE_JOINT4_CALIBRATION="true"
                     ;;
                 *)
-                    echo "ERROR: --mode must be teleop or gravity." >&2
+                    echo "ERROR: --mode must be teleop, gravity, or calibration." >&2
                     exit 2
                     ;;
             esac
@@ -76,6 +85,9 @@ for argument in "$@"; do
             ;;
         --gravity=*)
             ENABLE_GRAVITY_CONTROLLER="${argument#*=}"
+            ;;
+        --joint4-calibration=*)
+            ENABLE_JOINT4_CALIBRATION="${argument#*=}"
             ;;
         --gripper=*)
             ENABLE_GRIPPER="${argument#*=}"
@@ -142,6 +154,21 @@ if [[ "$ENABLE_GRAVITY_CONTROLLER" != "true" && \
     echo "ERROR: --gravity must be true or false." >&2
     exit 2
 fi
+if [[ "$ENABLE_JOINT4_CALIBRATION" != "true" && \
+    "$ENABLE_JOINT4_CALIBRATION" != "false" ]]; then
+    echo "ERROR: --joint4-calibration must be true or false." >&2
+    exit 2
+fi
+if [[ "$ENABLE_JOINT4_CALIBRATION" == "true" && \
+    "$ENABLE_GRAVITY_CONTROLLER" == "true" ]]; then
+    echo "ERROR: gravity and joint4 calibration controllers claim the same effort interfaces." >&2
+    exit 2
+fi
+if [[ "$ENABLE_JOINT4_CALIBRATION" == "true" && \
+    "$POSITION_CONTROLLER" != "none" ]]; then
+    echo "ERROR: joint4 calibration requires --position-controller=none." >&2
+    exit 2
+fi
 if [[ "$ENABLE_GRIPPER" != "true" && "$ENABLE_GRIPPER" != "false" ]]; then
     echo "ERROR: --gripper must be true or false." >&2
     exit 2
@@ -153,12 +180,20 @@ fi
 if [[ "$POSITION_CONTROLLER" != "teleop" ]]; then
     START_LEADER="false"
 fi
-if [[ "$POSITION_CONTROLLER" == "none" && "$ENABLE_GRAVITY_CONTROLLER" == "true" ]]; then
+if [[ "$POSITION_CONTROLLER" == "none" ]] && \
+    { [[ "$ENABLE_GRAVITY_CONTROLLER" == "true" ]] || \
+      [[ "$ENABLE_JOINT4_CALIBRATION" == "true" ]]; }; then
     GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/gravity_mit_gains.yaml"
 fi
 if [[ "$ENABLE_GRIPPER" == "true" ]]; then
     REQUIRED_ACTIVE_JOINT_MASK=$((0x7F))
     GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/arm_gripper_mit_gains.yaml"
+fi
+SELECTED_EFFORT_CONTROLLER=""
+if [[ "$ENABLE_GRAVITY_CONTROLLER" == "true" ]]; then
+    SELECTED_EFFORT_CONTROLLER="gravity_compensation_controller"
+elif [[ "$ENABLE_JOINT4_CALIBRATION" == "true" ]]; then
+    SELECTED_EFFORT_CONTROLLER="joint4_calibration_controller"
 fi
 
 if [[ ! "$DOMAIN_ID" =~ ^[0-9]+$ ]]; then
@@ -312,11 +347,14 @@ check_micro_ros_agent() {
 
 check_stm32_status() {
     local status_sample="$1"
+    local allow_disabled_stale_sequence="${2:-false}"
     local active_mask=""
     local fault_code=""
+    local mode=""
 
     active_mask="$(awk '/^active_joint_mask:/ {print $2; exit}' <<<"$status_sample")"
     fault_code="$(awk '/^fault_code:/ {print $2; exit}' <<<"$status_sample")"
+    mode="$(awk '/^mode:/ {print $2; exit}' <<<"$status_sample")"
     if [[ ! "$active_mask" =~ ^[0-9]+$ ]]; then
         echo "ERROR: STM32 active_joint_mask is not a decimal integer: '$active_mask'." >&2
         return 1
@@ -327,6 +365,12 @@ check_stm32_status() {
         return 1
     fi
     if [[ "$fault_code" != "0" ]]; then
+        if [[ "$allow_disabled_stale_sequence" == "true" && \
+            "$fault_code" == "4" && "$mode" == "3" ]]; then
+            echo "[WARN] STM32 reports recoverable STALE_SEQUENCE while disabled."
+            echo "       MicroRosSystem will resume after last_command_sequence."
+            return
+        fi
         case "$fault_code" in
             11)
                 echo "ERROR: STM32 fault_code=11 (COMMAND_LOSS_LATCHED)." >&2
@@ -544,7 +588,7 @@ stage "Micro-ROS Agent and STM32 endpoint"
 check_micro_ros_agent
 check_topic_once /stm32/status "$STM32_STATE_TIMEOUT"
 stm32_status_sample="$LAST_TOPIC_SAMPLE"
-check_stm32_status "$stm32_status_sample"
+check_stm32_status "$stm32_status_sample" true
 check_topic_once /stm32/joint_states "$STM32_STATE_TIMEOUT"
 pass "/stm32/joint_states is publishing."
 
@@ -552,11 +596,12 @@ stage "Controller Manager and controller states"
 if pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
     echo "Using the existing ros2_control_node process."
 elif [[ "$START_CONTROLLER" == "true" ]]; then
-    echo "Starting STM32H723 arm ros2_control (gripper=$ENABLE_GRIPPER)."
+    echo "Starting STM32H723 arm ros2_control (gripper=$ENABLE_GRIPPER, calibration=$ENABLE_JOINT4_CALIBRATION)."
     setsid ros2 launch microros_stm32h723_bridge \
         stm32h723_arm.launch.py \
         position_controller:="$POSITION_CONTROLLER" \
         enable_gravity_controller:="$ENABLE_GRAVITY_CONTROLLER" \
+        enable_joint4_calibration:="$ENABLE_JOINT4_CALIBRATION" \
         enable_gripper:="$ENABLE_GRIPPER" \
         gains_file:="$GAINS_FILE" &
     CONTROLLER_PID=$!
@@ -567,9 +612,38 @@ else
 fi
 
 echo "Waiting for Controller Manager and selected arm controllers."
+if [[ "$POSITION_CONTROLLER" == "none" && -n "$SELECTED_EFFORT_CONTROLLER" ]]; then
+    echo "Waiting for effort controllers to load before hardware activation."
+    gravity_load_deadline=$((SECONDS + CONTROLLER_START_TIMEOUT))
+    gravity_load_list=""
+    while (( SECONDS < gravity_load_deadline )); do
+        gravity_load_list="$(
+            timeout 5 ros2 control list_controllers \
+                --controller-manager "$CONTROLLER_MANAGER" 2>&1 || true
+        )"
+        if controller_has_state joint_state_broadcaster inactive "$gravity_load_list" && \
+            controller_has_state "$SELECTED_EFFORT_CONTROLLER" inactive "$gravity_load_list"; then
+            break
+        fi
+        sleep 1
+    done
+    if ! controller_has_state joint_state_broadcaster inactive "$gravity_load_list" || \
+        ! controller_has_state "$SELECTED_EFFORT_CONTROLLER" inactive "$gravity_load_list"; then
+        echo "$gravity_load_list" >&2
+        echo "ERROR: effort controllers were not loaded inactive before hardware activation." >&2
+        exit 1
+    fi
+    timeout "$CONTROLLER_START_TIMEOUT" ros2 control set_hardware_component_state \
+        "$HARDWARE_COMPONENT" active \
+        --controller-manager "$CONTROLLER_MANAGER"
+    timeout 10 ros2 control switch_controllers \
+        --activate joint_state_broadcaster "$SELECTED_EFFORT_CONTROLLER" \
+        --strict --controller-manager "$CONTROLLER_MANAGER"
+fi
 TELEOP_STATE="inactive"
 TRAJECTORY_STATE="inactive"
 GRAVITY_STATE="inactive"
+CALIBRATION_STATE="inactive"
 ACTIVE_COMMAND_CONTROLLERS=()
 if [[ "$POSITION_CONTROLLER" == "teleop" ]]; then
     TELEOP_STATE="active"
@@ -582,6 +656,10 @@ if [[ "$ENABLE_GRAVITY_CONTROLLER" == "true" ]]; then
     GRAVITY_STATE="active"
     ACTIVE_COMMAND_CONTROLLERS+=(gravity_compensation_controller)
 fi
+if [[ "$ENABLE_JOINT4_CALIBRATION" == "true" ]]; then
+    CALIBRATION_STATE="active"
+    ACTIVE_COMMAND_CONTROLLERS+=(joint4_calibration_controller)
+fi
 if [[ "$ENABLE_GRIPPER" == "true" ]]; then
     ACTIVE_COMMAND_CONTROLLERS+=(gripper_teleop_controller)
 fi
@@ -593,9 +671,12 @@ while (( SECONDS < controller_deadline )); do
                 --controller-manager "$CONTROLLER_MANAGER" 2>&1
         )" && \
         controller_has_state joint_state_broadcaster active "$controller_list" && \
-        controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list" && \
-        controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list" && \
+        { [[ "$POSITION_CONTROLLER" == "none" ]] || \
+          controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list"; } && \
+        { [[ "$POSITION_CONTROLLER" == "none" ]] || \
+          controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list"; } && \
         controller_has_state gravity_compensation_controller "$GRAVITY_STATE" "$controller_list" && \
+        controller_has_state joint4_calibration_controller "$CALIBRATION_STATE" "$controller_list" && \
         gripper_controller_matches "$controller_list"; then
         break
     fi
@@ -603,9 +684,12 @@ while (( SECONDS < controller_deadline )); do
 done
 controller_list="$(strip_ansi <<<"$controller_list")"
 if ! controller_has_state joint_state_broadcaster active "$controller_list" || \
-    ! controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list" || \
-    ! controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list" || \
+    { [[ "$POSITION_CONTROLLER" != "none" ]] && \
+      ! controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list"; } || \
+    { [[ "$POSITION_CONTROLLER" != "none" ]] && \
+      ! controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list"; } || \
     ! controller_has_state gravity_compensation_controller "$GRAVITY_STATE" "$controller_list" || \
+    ! controller_has_state joint4_calibration_controller "$CALIBRATION_STATE" "$controller_list" || \
     ! gripper_controller_matches "$controller_list"; then
     echo "$controller_list" >&2
     echo "ERROR: selected arm controllers were not ready within $CONTROLLER_START_TIMEOUT seconds." >&2
@@ -613,7 +697,7 @@ if ! controller_has_state joint_state_broadcaster active "$controller_list" || \
     exit 1
 fi
 echo "$controller_list"
-pass "Controllers match position=$POSITION_CONTROLLER, gravity=$ENABLE_GRAVITY_CONTROLLER, gripper=$ENABLE_GRIPPER."
+pass "Controllers match position=$POSITION_CONTROLLER, gravity=$ENABLE_GRAVITY_CONTROLLER, calibration=$ENABLE_JOINT4_CALIBRATION, gripper=$ENABLE_GRIPPER."
 
 stage "MicroRosSystem HardwareInterface"
 echo "Checking ros2_control hardware lifecycle."
@@ -658,7 +742,7 @@ for joint_index in {1..6}; do
         ! grep -Eq "joint${joint_index}/position \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
         interfaces_valid="false"
     fi
-    if [[ "$ENABLE_GRAVITY_CONTROLLER" == "true" ]] && \
+    if [[ -n "$SELECTED_EFFORT_CONTROLLER" ]] && \
         ! grep -Eq "joint${joint_index}/effort \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
         interfaces_valid="false"
     fi
@@ -772,6 +856,7 @@ else
     echo "Controller self-check passed:"
     echo "  position_controller=$POSITION_CONTROLLER"
     echo "  gravity_controller=$ENABLE_GRAVITY_CONTROLLER"
+    echo "  joint4_calibration_controller=$ENABLE_JOINT4_CALIBRATION"
     echo "  -> ros2_control MicroRosSystem -> /stm32/joint_commands"
     echo "  -> micro-ROS Agent -> STM32 status acknowledgement"
     wait "$CONTROLLER_PID"

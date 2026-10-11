@@ -6,4 +6,12 @@
     base_class_type="controller_interface::ControllerInterface">
     <description>Pinocchio gravity feed-forward controller for the STM32H723 arm.</description>
   </class>
+  <class
+    name="microros_stm32h723_bridge/Joint4CalibrationController"
+    type="microros_stm32h723_bridge::Joint4CalibrationController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Bounded joint4 soft-hold controller with multi-pose gravity and payload regression.
+    </description>
+  </class>
 </library>

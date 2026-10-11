@@ -397,7 +397,24 @@
   <!-- RealSense D435i mount calibrated with MoveIt hand-eye calibration.
        The RealSense driver publishes the optical frames below camera_link. -->
   <link
-    name="camera_link" />
+    name="camera_link">
+    <!-- Intel RealSense D435i, 0.075 kg approximated as a
+         0.025 x 0.090 x 0.025 m box in camera_link coordinates. -->
+    <inertial>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <mass
+        value="0.075" />
+      <inertia
+        ixx="5.453125E-05"
+        ixy="0"
+        ixz="0"
+        iyy="7.8125E-06"
+        iyz="0"
+        izz="5.453125E-05" />
+    </inertial>
+  </link>
   <joint
     name="camera_mount_joint"
     type="fixed">
