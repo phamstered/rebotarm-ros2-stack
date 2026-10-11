@@ -19,6 +19,8 @@ public:
     const std::vector<std::string> & hardware_joint_names);
 
   std::vector<double> compute(const std::vector<double> & hardware_positions);
+  std::vector<double> compute_point_mass_gravity_sensitivity(
+    const std::vector<double> & hardware_positions, const std::string & frame_name);
   bool initialized() const noexcept;
 
 private:

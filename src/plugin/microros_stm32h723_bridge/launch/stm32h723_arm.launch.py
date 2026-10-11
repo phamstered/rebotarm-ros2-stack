@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition, UnlessCondition
+from launch.conditions import IfCondition
 from launch.substitutions import (
     Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution,
     PythonExpression,
@@ -22,26 +22,46 @@ def generate_launch_description():
     state_only = LaunchConfiguration('state_only')
     position_controller = LaunchConfiguration('position_controller')
     enable_gravity_controller = LaunchConfiguration('enable_gravity_controller')
+    enable_joint4_calibration = LaunchConfiguration('enable_joint4_calibration')
     enable_gripper = LaunchConfiguration('enable_gripper')
+    gravity_tuning = IfCondition(PythonExpression([
+        "'", position_controller, "' == 'none' and ('",
+        enable_gravity_controller, "'.lower() == 'true' or '",
+        enable_joint4_calibration, "'.lower() == 'true') and '",
+        state_only, "' == 'false'",
+    ]))
+    normal_control = IfCondition(PythonExpression([
+        "not ('", position_controller, "' == 'none' and ('",
+        enable_gravity_controller, "'.lower() == 'true' or '",
+        enable_joint4_calibration, "'.lower() == 'true')) and '",
+        state_only, "' == 'false'",
+    ]))
     teleop_active = IfCondition(PythonExpression([
         "'", position_controller, "' == 'teleop' and '", state_only, "' == 'false'",
     ]))
     teleop_inactive = IfCondition(PythonExpression([
-        "'", position_controller, "' != 'teleop' and '", state_only, "' == 'false'",
+        "'", position_controller, "' == 'trajectory' and '", state_only, "' == 'false'",
     ]))
     trajectory_active = IfCondition(PythonExpression([
         "'", position_controller, "' == 'trajectory' and '", state_only, "' == 'false'",
     ]))
     trajectory_inactive = IfCondition(PythonExpression([
-        "'", position_controller, "' != 'trajectory' and '", state_only, "' == 'false'",
+        "'", position_controller, "' == 'teleop' and '", state_only, "' == 'false'",
     ]))
     gravity_active = IfCondition(PythonExpression([
         "'", enable_gravity_controller, "'.lower() == 'true' and '",
+        enable_joint4_calibration, "'.lower() != 'true' and '",
+        position_controller, "' != 'none' and '",
         state_only, "' == 'false'",
     ]))
     gravity_inactive = IfCondition(PythonExpression([
-        "'", enable_gravity_controller, "'.lower() != 'true' and '",
+        "('", enable_gravity_controller, "'.lower() != 'true' or '",
+        position_controller, "' == 'none' or '",
+        enable_joint4_calibration, "'.lower() == 'true') and '",
         state_only, "' == 'false'",
+    ]))
+    calibration_inactive = IfCondition(PythonExpression([
+        "'", state_only, "' == 'false'",
     ]))
     gripper_active = IfCondition(PythonExpression([
         "'", enable_gripper, "'.lower() == 'true' and '",
@@ -75,6 +95,13 @@ def generate_launch_description():
             description='Activate the independent effort-only gravity controller.',
         ),
         DeclareLaunchArgument(
+            'enable_joint4_calibration',
+            default_value='false',
+            description=(
+                'Load joint4 calibration mode for explicit activation by the '
+                'guarded startup helper.'),
+        ),
+        DeclareLaunchArgument(
             'enable_gripper',
             default_value='false',
             description=(
@@ -96,7 +123,23 @@ def generate_launch_description():
                 {'use_sim_time': use_sim_time},
             ],
             output='screen',
-            condition=UnlessCondition(state_only),
+            condition=normal_control,
+        ),
+        Node(
+            package='controller_manager',
+            executable='ros2_control_node',
+            parameters=[
+                robot_description,
+                controllers_file,
+                {
+                    'use_sim_time': use_sim_time,
+                    'hardware_components_initial_state': {
+                        'inactive': ['Stm32H723ArmSystem'],
+                    },
+                },
+            ],
+            output='screen',
+            condition=gravity_tuning,
         ),
         Node(
             package='robot_state_publisher',
@@ -138,7 +181,17 @@ def generate_launch_description():
                 '--controller-manager', '/controller_manager',
             ],
             output='screen',
-            condition=UnlessCondition(state_only),
+            condition=normal_control,
+        ),
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'joint_state_broadcaster', '--inactive',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+            condition=gravity_tuning,
         ),
         Node(
             package='controller_manager',
@@ -159,6 +212,16 @@ def generate_launch_description():
             ],
             output='screen',
             condition=gravity_inactive,
+        ),
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'joint4_calibration_controller', '--inactive',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+            condition=calibration_inactive,
         ),
         Node(
             package='controller_manager',

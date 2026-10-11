@@ -41,15 +41,20 @@ def test_state_only_launch_uses_read_only_republisher():
     assert "default_value='false'" in launch_source
     assert "executable='stm32_state_republisher.py'" in launch_source
     assert 'condition=IfCondition(state_only)' in launch_source
-    assert launch_source.count('condition=UnlessCondition(state_only)') == 2
+    assert launch_source.count('condition=normal_control') == 2
     assert "'position_controller'" in launch_source
     assert "'enable_gravity_controller'" in launch_source
+    assert "'enable_joint4_calibration'" in launch_source
     assert "'enable_gripper'" in launch_source
     assert "choices=['teleop', 'trajectory', 'none']" in launch_source
     assert 'condition=teleop_active' in launch_source
     assert 'condition=trajectory_active' in launch_source
     assert 'condition=gravity_active' in launch_source
+    assert 'condition=gravity_tuning' in launch_source
+    assert "'hardware_components_initial_state'" in launch_source
+    assert "'inactive': ['Stm32H723ArmSystem']" in launch_source
     assert 'gravity_compensation_controller' in launch_source
+    assert 'joint4_calibration_controller' in launch_source
 
     cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
     assert 'scripts/stm32_state_republisher.py' in cmake_source
@@ -99,6 +104,8 @@ def test_bringup_controllers_claim_joints_1_to_6():
         'position_controllers/JointGroupPositionController')
     assert manager['gravity_compensation_controller']['type'] == (
         'microros_stm32h723_bridge/GravityCompensationController')
+    assert manager['joint4_calibration_controller']['type'] == (
+        'microros_stm32h723_bridge/Joint4CalibrationController')
     assert config['arm_teleop_controller']['ros__parameters']['joints'] == (
         expected_joints)
     assert config['gripper_teleop_controller']['ros__parameters']['joints'] == [
@@ -108,8 +115,31 @@ def test_bringup_controllers_claim_joints_1_to_6():
     assert broadcaster['interfaces'] == ['position', 'velocity', 'effort']
     gravity = config['gravity_compensation_controller']['ros__parameters']
     assert gravity['joints'] == expected_joints
-    assert gravity['gravity_scales'] == [0.1, 0.2, 0.2, 0.65, 1.0, 1.0]
-    assert gravity['effort_limits'] == [5.0, 5.0, 5.0, 3.0, 3.0, 3.0]
+    assert gravity['gravity_scales'] == [1.0] * 6
+    assert gravity['effort_limits'] == [10.0] * 6
+    calibration = config['joint4_calibration_controller']['ros__parameters']
+    assert calibration['joints'] == expected_joints
+    assert calibration['calibration_joint'] == 'joint4'
+    assert calibration['payload_frame'] == 'camera_link'
+    assert calibration['nominal_payload_mass'] == 0.075
+    assert 0.0 < calibration['max_correction_effort'] <= 1.5
+    assert 0.0 < calibration['max_position_error'] <= 0.12
+    assert 0.0 < calibration['max_calibration_velocity'] <= 0.20
+    assert calibration['capture_velocity_threshold'] <= 0.01
+
+
+def test_realsense_camera_contributes_mass_to_gravity_model():
+    urdf_path = PACKAGE_ROOT.parents[1] / 'rebotarm_gazebo' / 'urdf' / 'rebotarm.urdf'
+    root = ET.parse(urdf_path).getroot()
+    camera_link = root.find("./link[@name='camera_link']")
+    assert camera_link is not None
+    inertial = camera_link.find('inertial')
+    assert inertial is not None
+    assert float(inertial.find('mass').attrib['value']) == 0.075
+    inertia = inertial.find('inertia').attrib
+    assert float(inertia['ixx']) > 0.0
+    assert float(inertia['iyy']) > 0.0
+    assert float(inertia['izz']) > 0.0
 
 
 def test_gravity_is_computed_only_by_the_effort_controller():
@@ -127,6 +157,46 @@ def test_gravity_is_computed_only_by_the_effort_controller():
     assert (
         'target_link_libraries(${HARDWARE_LIBRARY} yaml-cpp)'
         in cmake_source)
+
+
+def test_joint4_calibration_controller_is_guarded_and_regresses_multiple_poses():
+    source = (
+        PACKAGE_ROOT / 'src' / 'joint4_calibration_controller.cpp').read_text()
+    plugin = ET.parse(
+        PACKAGE_ROOT / 'gravity_compensation_controller.xml').getroot()
+    plugin_names = {item.attrib['name'] for item in plugin.findall('class')}
+    start_script = (PACKAGE_ROOT.parents[2] / 'scripts' /
+                    'start_arm_teleop.sh').read_text()
+
+    assert 'microros_stm32h723_bridge/Joint4CalibrationController' in plugin_names
+    assert 'compute_point_mass_gravity_sensitivity' in source
+    assert 'max_correction_effort_' in source
+    assert 'max_position_error_' in source
+    assert 'max_calibration_velocity_' in source
+    assert 'stable_duration_' in source
+    assert 'samples.size() < 4' in source
+    for service in ('~/begin_pose', '~/release_pose', '~/capture_pose',
+                    '~/fit', '~/reset'):
+        assert service in source
+    release_body = source.split(
+        'void Joint4CalibrationController::release_pose(', 1)[1].split(
+            'void Joint4CalibrationController::capture_pose(', 1)[0]
+    assert 'pose_active_ = false' in release_body
+    assert 'pose_faulted_ = false' in release_body
+    assert 'pose_captured_ = false' in release_body
+    assert 'pose fault cleared' in release_body
+    assert '--joint4-calibration=true|false' in start_script
+    assert 'gravity and joint4 calibration controllers claim the same' in start_script
+
+
+def test_hardware_waits_for_fresh_feedback_before_activation():
+    hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
+    read_source = hardware_source.split(
+        'hardware_interface::return_type MicroRosSystem::read', 1)[1].split(
+        'hardware_interface::return_type MicroRosSystem::write', 1)[0]
+    assert 'if (!active_.load())' in read_source
+    assert 'feedback_.received_at <= state_timeout_' in hardware_source
+    assert 'sequence_ = status_.last_command_sequence' in hardware_source
 
 
 def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
@@ -158,7 +228,7 @@ def test_gravity_mode_uses_zero_position_stiffness():
         assert config[group_name]['kd'] == [1.0] * 6 + [0.0]
     assert config['idle']['kp'] == [0.0] * 7
     assert config['idle']['kd'] == [1.0] * 6 + [0.0]
-    assert config['effort_limits'] == [5.0] * 3 + [3.0] * 3 + [0.0]
+    assert config['effort_limits'] == [10.0] * 6 + [0.0]
 
 
 def test_hardware_supports_calibrated_gripper_position_conversion():

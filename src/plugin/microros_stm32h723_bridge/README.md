@@ -17,6 +17,62 @@ For supported-arm tuning without a position controller, run:
   --position-controller=none --gravity=true --clean=true
 ```
 
+## Joint4 multi-pose calibration
+
+The `joint4_calibration_controller` replaces the normal gravity controller
+during calibration. It keeps URDF gravity feed-forward on all six joints and
+adds a bounded soft hold to joint4 only after `begin_pose` is requested. Never
+activate it together with `gravity_compensation_controller` because both claim
+the same effort interfaces.
+
+Support the arm, keep the emergency stop ready, and start the guarded mode:
+
+```bash
+./scripts/start_arm_teleop.sh --mode=calibration --clean=true
+```
+
+For each of at least four well-separated poses:
+
+```bash
+# Manually place and support the arm, then establish the joint4 reference.
+ros2 service call /joint4_calibration_controller/begin_pose \
+  std_srvs/srv/Trigger '{}'
+
+# Wait until status element 7 has exceeded stable_duration (default 1.5 s).
+ros2 topic echo /joint4_calibration_controller/status --once
+
+ros2 service call /joint4_calibration_controller/capture_pose \
+  std_srvs/srv/Trigger '{}'
+
+# Support joint4 before removing its bounded soft-hold correction.
+ros2 service call /joint4_calibration_controller/release_pose \
+  std_srvs/srv/Trigger '{}'
+```
+
+`release_pose` is the explicit acknowledgement for a guarded pose failure: it
+disables the soft hold, clears the latched pose fault/captured flags, and leaves
+gravity feed-forward active. Physically support joint4 before calling it. A new
+pose still requires a slow, explicit `begin_pose`.
+
+The status array is ordered as `q4`, `dq4`, model gravity effort, soft-hold
+correction, required effort, one-kilogram payload sensitivity, pose reference,
+stable seconds, captured sample count, pose-active flag, safety-fault flag, and
+pose-captured flag. A pose is rejected if joint4 exceeds 0.20 rad/s, moves more
+than 0.12 rad from its reference, saturates the 1.5 N*m correction, or reaches
+the total effort limit.
+
+After collecting the poses, request both regressions:
+
+```bash
+ros2 service call /joint4_calibration_controller/fit std_srvs/srv/Trigger '{}'
+```
+
+The response reports a recommended `gravity_scale`, constant joint4 torque
+bias, RMSE, and the camera-frame equivalent payload mass. These are suggestions
+only: the controller does not rewrite the URDF or activate a fitted value. Use
+poses spanning both small and large joint4 gravity moments. Repeating poses
+after approaching from opposite directions reduces static-friction bias.
+
 ## Build
 
 ```bash
@@ -75,8 +131,8 @@ This profile requires firmware whose active mask contains `0x3F` and exports
 separate position and effort interfaces for joint1-6. RETURN/HOLD gains match the legacy follower
 driver. The current TRACK experiment uses 40.0/3.0 for joint1-3, 40.0/1.5 for
 joint4, and 10.0/1.5 for joint5-6. IDLE is 0.0/1.0 for all six joints. Gravity
-feed-forward is disabled by default and is limited to 5 N*m for joint1-3 and
-3 N*m for joint4-6 when enabled. State-only mode never loads this control path.
+feed-forward is disabled by default and is limited to 10 N*m for joint1-6 when
+enabled. State-only mode never loads this control path.
 
 ## Arm teleoperation
 

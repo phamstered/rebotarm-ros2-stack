@@ -67,6 +67,7 @@ set(GRAVITY_CONTROLLER_LIBRARY ${PROJECT_NAME}_gravity_controller)
 add_library(${GRAVITY_CONTROLLER_LIBRARY} SHARED
   src/gravity_compensation.cpp
   src/gravity_compensation_controller.cpp
+  src/joint4_calibration_controller.cpp
 )
 target_include_directories(${GRAVITY_CONTROLLER_LIBRARY} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -79,6 +80,8 @@ ament_target_dependencies(${GRAVITY_CONTROLLER_LIBRARY}
   pluginlib
   rclcpp
   rclcpp_lifecycle
+  std_msgs
+  std_srvs
 )
 target_link_libraries(${GRAVITY_CONTROLLER_LIBRARY} pinocchio::pinocchio)
 pluginlib_export_plugin_description_file(
