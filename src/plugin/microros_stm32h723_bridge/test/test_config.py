@@ -211,7 +211,7 @@ def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
     for group_name, (expected_kp, expected_kd) in expected_gains.items():
         assert config[group_name]['kp'][:6] == expected_kp
         assert config[group_name]['kd'][:6] == expected_kd
-    assert config['effort_limits'][:6] == [5.0] * 3 + [3.0] * 3
+    assert config['effort_limits'][:6] == [10.0] * 3 + [6.0] * 3
     for group_name in ('return', 'hold', 'track', 'idle'):
         assert config[group_name]['kp'][6] == 0.0
         assert config[group_name]['kd'][6] == 0.0
