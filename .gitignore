@@ -22,3 +22,8 @@ Thumbs.db
 
 # Pytest
 .pytest_cache/
+
+# VitePress / npm docs site
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
