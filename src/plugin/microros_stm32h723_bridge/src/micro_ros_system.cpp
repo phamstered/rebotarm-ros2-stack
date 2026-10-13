@@ -195,7 +195,10 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
   std::unique_lock<std::mutex> lock(feedback_mutex_);
   if (!feedback_cv_.wait_for(
       lock, activation_timeout_,
-      [this]() {return feedback_.valid && required_joints_active_.load();}))
+      [this]() {
+        return feedback_.valid && required_joints_active_.load() &&
+               std::chrono::steady_clock::now() - feedback_.received_at <= state_timeout_;
+      }))
   {
     RCLCPP_ERROR(node_->get_logger(), "Timed out waiting for complete state and required joint mask");
     return hardware_interface::CallbackReturn::ERROR;
@@ -209,10 +212,18 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
     command_position_[protocol_index] = state_position_[protocol_index];
   }
   command_velocity_.fill(0.0);
+  {
+    std::lock_guard<std::mutex> status_lock(status_mutex_);
+    // A ros2_control restart must continue after the last sequence accepted by
+    // the still-running STM32. Restarting at one would otherwise be rejected
+    // as MOTOR_FAULT_STALE_SEQUENCE until the MCU is power-cycled.
+    sequence_ = status_.last_command_sequence;
+  }
   safe_stop_requested_.store(false);
   disable_sequence_ = 0;
   command_mode_.store(msg::JointCommand::MODE_HOLD);
   active_.store(true);
+  RCLCPP_INFO(node_->get_logger(), "Resuming command sequence after %u", sequence_);
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -231,6 +242,10 @@ hardware_interface::CallbackReturn MicroRosSystem::on_deactivate(const rclcpp_li
 
 hardware_interface::return_type MicroRosSystem::read(const rclcpp::Time &, const rclcpp::Duration &)
 {
+  if (!active_.load()) {
+    return hardware_interface::return_type::OK;
+  }
+
   Feedback snapshot;
   {
     std::lock_guard<std::mutex> lock(feedback_mutex_);
