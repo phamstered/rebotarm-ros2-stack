@@ -1,0 +1,93 @@
+# Squash-merge PRs authored by the repo owner once CI succeeds.
+#
+# Ported from phamstered/robot-debug-desk/.github/workflows/auto-merge-owner-prs.yml
+# with REQUIRED_CHECK renamed to this repo's CI job name.
+#
+# Why this exists:
+# - Repo is private; classic branch protection / rulesets are not available
+#   on Free (API returns 403). Native GitHub "Allow auto-merge" also does not
+#   stick here, and even when enabled it only helps when required checks are
+#   still pending (needs enforceable branch protection).
+# - So we gate in Actions: after the CI workflow completes successfully for a
+#   pull_request event, merge if the PR author is the owner allowlist below.
+#
+# Scope: owner PRs only (not Dependabot / outside collaborators).
+name: Auto-merge owner PRs
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+# GITHUB_TOKEN note: an explicit permissions block sets every unlisted scope
+# to "none". Reading check runs / statusCheckRollup needs checks + statuses
+# read, otherwise GraphQL fails with "Resource not accessible by integration".
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+  actions: read
+
+jobs:
+  merge:
+    name: Squash-merge owner PR after green CI
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Find and squash-merge owner PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          # Comma-separated GitHub logins whose PRs auto-merge after CI.
+          OWNER_ALLOWLIST: "phamstered"
+          REQUIRED_CHECK: "ROS 2 Humble build + test"
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          # Open same-repo PR whose head is exactly the SHA CI just passed on.
+          PR=$(gh api "repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${OWNER}:${HEAD_BRANCH}&per_page=100" \
+            --jq "[.[] | select(.head.sha == \"${HEAD_SHA}\" and .head.repo.full_name == \"${GITHUB_REPOSITORY}\")][0] // empty")
+          if [ -z "$PR" ]; then
+            echo "No open same-repo PR with head ${HEAD_SHA}; nothing to merge."
+            exit 0
+          fi
+          PR_NUMBER=$(jq -r .number <<<"$PR")
+          AUTHOR=$(jq -r .user.login <<<"$PR")
+          DRAFT=$(jq -r .draft <<<"$PR")
+          echo "PR #${PR_NUMBER} author=${AUTHOR} draft=${DRAFT}"
+          case ",${OWNER_ALLOWLIST}," in
+            *",${AUTHOR},"*) ;;
+            *) echo "Author ${AUTHOR} not in OWNER_ALLOWLIST; skipping."; exit 0 ;;
+          esac
+          if [ "$DRAFT" != "false" ]; then
+            echo "PR is a draft; skipping."
+            exit 0
+          fi
+          # Required check must have succeeded on this exact head SHA.
+          CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs?check_name=$(jq -rn --arg c "$REQUIRED_CHECK" '$c|@uri')&filter=latest" \
+            --jq '[.check_runs[] | select(.status == "completed")] | sort_by(.completed_at) | last | .conclusion // "missing"')
+          echo "Required check '${REQUIRED_CHECK}' on ${HEAD_SHA}: ${CONCLUSION}"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "Required check not successful; skipping."
+            exit 0
+          fi
+          # --match-head-commit refuses the merge if the branch moved meanwhile.
+          for attempt in 1 2; do
+            if gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --squash --delete-branch --match-head-commit "$HEAD_SHA"; then
+              echo "Merged #${PR_NUMBER} via squash."
+              exit 0
+            fi
+            STATE=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+            if [ "$STATE" = "MERGED" ]; then
+              echo "PR already merged."
+              exit 0
+            fi
+            [ "$attempt" = 1 ] && sleep 15
+          done
+          echo "Failed to merge #${PR_NUMBER}."
+          exit 1

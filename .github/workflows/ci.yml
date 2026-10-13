@@ -1,0 +1,105 @@
+# leader_follower CI — runs what GitHub-hosted runners can exercise.
+# Style modeled on phamstered/robot-debug-desk/.github/workflows/ci.yml
+# (explicit covered/not-covered header, ubuntu-22.04, push/PR → main).
+#
+# Covered:
+#   - colcon build of workspace packages under src/ (incl. nested
+#     src/plugin/microros_stm32h723_bridge)
+#   - Existing pytest: joint_state_relay/test, microros_stm32h723_bridge/test
+#     (config / source-contract checks; no live hardware)
+#
+# NOT covered here (needs Jetson / real arm / Gazebo GUI; see AGENTS.md):
+#   - Hardware bring-up (start_jetson.sh, CAN, STM32 micro-ROS agent)
+#   - Live Gazebo / MoveIt demos
+#   - External packages not in this repo (stararm102_description, micro_ros_agent)
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  ROS_DISTRO: humble
+  # Keep colcon output readable in Actions logs.
+  COLCON_LOG_LEVEL: info
+
+jobs:
+  test:
+    name: ROS 2 Humble build + test
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup ROS 2 Humble
+        uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: humble
+
+      - name: Install rosdep dependencies
+        run: |
+          set -euo pipefail
+          rosdep update
+          # stararm102_description / micro_ros_agent live outside this repo
+          # (Jetson overlays). Skip so rosdep does not fail the job.
+          rosdep install --from-paths src --ignore-src -y -r \
+            --rosdistro "${ROS_DISTRO}" \
+            --skip-keys "stararm102_description micro_ros_agent"
+
+      - name: Install extra CI Python tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-pytest python3-yaml ccache
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ccache-${{ runner.os }}-${{ hashFiles('src/**/CMakeLists.txt', 'src/**/*.cpp', 'src/**/*.hpp') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: colcon build (no hardware)
+        run: |
+          set -euo pipefail
+          source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          export CCACHE_DIR="${HOME}/.ccache"
+          export CMAKE_C_COMPILER_LAUNCHER=ccache
+          export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          # Nested package under src/plugin/ is discovered by default.
+          colcon build --symlink-install \
+            --cmake-args -DCMAKE_BUILD_TYPE=Release \
+            --event-handlers console_cohesion+
+
+      - name: pytest (joint_state_relay)
+        run: |
+          set -euo pipefail
+          source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          source install/setup.bash
+          # ament_python package has no ament_add_pytest_test; run explicitly
+          # (matches robot-debug-desk's explicit per-suite steps).
+          python3 -m pytest src/joint_state_relay/test -v \
+            --junitxml=pytest-joint_state_relay.xml
+
+      - name: colcon test (microros_stm32h723_bridge)
+        run: |
+          set -euo pipefail
+          source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          source install/setup.bash
+          colcon test \
+            --packages-select microros_stm32h723_bridge \
+            --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Upload pytest / colcon logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: |
+            log/
+            pytest-*.xml
+          if-no-files-found: ignore
