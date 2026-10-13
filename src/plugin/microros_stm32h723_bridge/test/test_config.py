@@ -191,12 +191,24 @@ def test_joint4_calibration_controller_is_guarded_and_regresses_multiple_poses()
 
 def test_hardware_waits_for_fresh_feedback_before_activation():
     hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
+    activate_source = hardware_source.split(
+        'hardware_interface::CallbackReturn MicroRosSystem::on_activate', 1)[1].split(
+        'hardware_interface::CallbackReturn MicroRosSystem::on_deactivate', 1)[0]
     read_source = hardware_source.split(
         'hardware_interface::return_type MicroRosSystem::read', 1)[1].split(
         'hardware_interface::return_type MicroRosSystem::write', 1)[0]
-    assert 'if (!active_.load())' in read_source
-    assert 'feedback_.received_at <= state_timeout_' in hardware_source
-    assert 'sequence_ = status_.last_command_sequence' in hardware_source
+    write_source = hardware_source.split(
+        'hardware_interface::return_type MicroRosSystem::write', 1)[1].split(
+        'void MicroRosSystem::joint_state_callback', 1)[0]
+    # Activation blocks until fresh JointState + required joint mask arrive.
+    assert 'feedback_cv_.wait_for' in activate_source
+    assert 'feedback_.valid && required_joints_active_.load()' in activate_source
+    # read() rejects stale / missing feedback via state_timeout_.
+    assert 'snapshot.valid' in read_source
+    assert 'snapshot.received_at > state_timeout_' in read_source
+    # Commands are gated on the active_ flag (not read()).
+    assert 'if (!active_.load())' in write_source
+    assert 'message.sequence = ++sequence_' in hardware_source
 
 
 def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():

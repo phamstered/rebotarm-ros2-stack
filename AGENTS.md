@@ -30,7 +30,12 @@ Use four-space indentation and PEP 8 conventions for Python. Name modules, funct
 
 ## Testing Guidelines
 
-There is currently no committed automated test suite. For new behavior, add package-local tests under `test/`, using `pytest`/`ament_pytest` for Python packages and standard `ament_cmake` testing for CMake packages. Name Python tests `test_<behavior>.py`. At minimum, build the affected package, run `colcon test`, and smoke-test the relevant launch mode. Hardware changes should document the device, ROS domain, and observed result.
+Package-local automated tests live under `test/`:
+
+- `joint_state_relay/test/` — pytest (config + gripper mapping helpers)
+- `plugin/microros_stm32h723_bridge/test/` — ament pytest (config / source contracts)
+
+Name Python tests `test_<behavior>.py`. GitHub Actions (`.github/workflows/ci.yml`) runs `colcon build` plus these suites on Ubuntu 22.04 / ROS 2 Humble; it does **not** exercise hardware, Gazebo GUI, or Jetson bring-up. For new behavior, extend those tests, then locally: build the affected package, run `colcon test` (or the matching pytest path), and smoke-test the relevant launch mode. Hardware changes should document the device, ROS domain, and observed result.
 
 ## Commit & Pull Request Guidelines
 
