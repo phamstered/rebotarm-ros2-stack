@@ -65,7 +65,11 @@ jobs:
       - name: colcon build (no hardware)
         run: |
           set -euo pipefail
+          # setup.bash references AMENT_TRACE_SETUP_FILES without a default;
+          # nounset aborts. Relax -u only around the source.
+          set +u
           source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          set -u
           export CCACHE_DIR="${HOME}/.ccache"
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
@@ -77,8 +81,10 @@ jobs:
       - name: pytest (joint_state_relay)
         run: |
           set -euo pipefail
+          set +u
           source "/opt/ros/${ROS_DISTRO}/setup.bash"
           source install/setup.bash
+          set -u
           # ament_python package has no ament_add_pytest_test; run explicitly
           # (matches robot-debug-desk's explicit per-suite steps).
           python3 -m pytest src/joint_state_relay/test -v \
@@ -87,8 +93,10 @@ jobs:
       - name: colcon test (microros_stm32h723_bridge)
         run: |
           set -euo pipefail
+          set +u
           source "/opt/ros/${ROS_DISTRO}/setup.bash"
           source install/setup.bash
+          set -u
           colcon test \
             --packages-select microros_stm32h723_bridge \
             --event-handlers console_direct+
