@@ -4,7 +4,7 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'rebotarm-ros2-stack',
   description:
-    'ROS 2 Humble leader–follower stack — joint_state_relay, ros2_control / micro-ROS bridge, MoveIt, Gazebo',
+    'ROS 2 Humble arm control stack for reBotArm B601 — ros2_control, micro-ROS, Gazebo, MoveIt, CAN driver',
   base: '/rebotarm-ros2-stack/',
   cleanUrls: true,
   ignoreDeadLinks: true,
@@ -13,7 +13,7 @@ export default defineConfig({
       { text: '介绍', link: '/' },
       { text: '架构', link: '/architecture' },
       { text: '构建与运行', link: '/build-run' },
-      { text: '控制路径', link: '/controllers' },
+      { text: '控制栈', link: '/controllers' },
       { text: 'CI', link: '/ci' },
       {
         text: 'GitHub',
@@ -27,7 +27,7 @@ export default defineConfig({
           { text: '项目介绍', link: '/' },
           { text: '架构与包', link: '/architecture' },
           { text: '构建与运行', link: '/build-run' },
-          { text: '控制路径 (CAN / micro-ROS)', link: '/controllers' },
+          { text: '控制栈与后端', link: '/controllers' },
         ],
       },
       {
@@ -47,8 +47,8 @@ export default defineConfig({
     outline: { level: [2, 3] },
     search: { provider: 'local' },
     footer: {
-      message: 'User docs for rebotarm-ros2-stack (formerly leader_follower)',
-      copyright: 'Source: CLAUDE.md, AGENTS.md, docs/, and package READMEs',
+      message: 'User docs for rebotarm-ros2-stack (ROS 2 control / arm software stack)',
+      copyright: 'Grounded in src/ packages; historical teleop-only narrative is not authoritative',
     },
   },
 })

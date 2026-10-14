@@ -1,78 +1,100 @@
 # 架构与包
 
-## 设备拓扑
+本文档从仓库 `src/` 的实现归纳栈结构。历史「仅主从遥操」叙述若与代码冲突，以代码为准。
 
-| 设备 | SSH / 地址 | 角色 |
-|------|------------|------|
-| Jetson ORIN Nano 8G | `ssh damiao` @ 192.168.2.124 | 主臂驱动 + relay；real 模式下亦跑从臂 |
-| Ubuntu 22.04 AMD64 | `ssh ubuntu` @ 192.168.55.100 | Gazebo 仿真从臂 |
-| macOS | 开发机 | 代码同步（`scripts/sync_and_build.sh`） |
-
-**连接摘要**
-
-- Jetson ↔ 主臂：串口（如 `/dev/ttyCH341USB0`）
-- Jetson ↔ 从臂（CAN 路径）：`can0`
-- Jetson ↔ 从臂（micro-ROS 路径）：串口 + `micro-ros-agent`（如 `/dev/ttyACM0`）
-- 三机同一局域网
-
-## 两种运行场景
+## 分层视图
 
 ```
-场景 A — 仿真从臂
-  主臂 (Jetson, domain 0)
-       │ joint_states
-       ▼
-  domain_bridge → /leader/joint_states (domain 1)
-       │
-       ▼
-  relay_node (mode=gazebo) → FollowJointTrajectory / arm_controller
-       │
-       ▼
-  Gazebo Fortress + ros2_control (Ubuntu)
-
-场景 B — 真实从臂
-  主臂 (Jetson)
-       │
-       ▼
-  relay_node (mode=real | ros2_control)
-       │
-       ├── CAN 路径: /joint_commands → rebotarm_hw_driver
-       └── micro-ROS 路径: arm_teleop / trajectory → microros_stm32h723_bridge
+应用 / 命令源
+  · MoveIt2 (move_group → FollowJointTrajectory)
+  · joint_state_relay (leader → follower；mode: gazebo | real | ros2_control)
+  · 直接话题/action（arm_teleop / trajectory / 标定服务）
+        │
+        ▼
+ros2_control 控制器层（controller_manager）
+  · JointTrajectoryController / JointGroupPositionController
+  · JointStateBroadcaster
+  · GravityCompensationController（effort-only）
+  · Joint4CalibrationController（与重力控制器互斥）
+        │  接口名匹配：jointN/position · jointN/effort
+        ▼
+硬件后端（三选一，勿混用同一物理臂）
+  · Gazebo: ign_ros2_control / mock_components
+  · micro-ROS: microros_stm32h723_bridge/MicroRosSystem
+  · CAN 直驱: rebotarm_hw_driver（绕过 ros2_control 插件，吃 /joint_commands）
+        │
+        ▼
+物理 / 仿真
+  · Ignition Gazebo 6 · STM32H723（agent 串口）· can0 MIT 电机
 ```
 
-## `src/` 包
+**主从跟随**只是「应用 / 命令源」里的一种：`joint_state_relay` 把主臂 `joint_states` 映射后写入从臂后端。同一后端也可由 MoveIt、轨迹 action、重力标定脚本驱动。
 
-| 包 | 职责 |
-|----|------|
-| `joint_state_relay` | 主→从关节映射、DDS domain bridge、YAML 配置与 launch（gazebo / real / microros） |
-| `rebotarm_hw_driver` | 真实从臂 CAN/MIT 驱动与硬件 launch |
-| `rebotarm_gazebo` | URDF/Xacro、meshes、Gazebo 模型、控制器与 RViz |
-| `rebotarm_moveit_config` | MoveIt2 规划与控制器配置 |
-| `plugin/microros_stm32h723_bridge` | ros2_control `SystemInterface`：micro-ROS JointState ↔ MIT JointCommand；重力补偿 / Joint4 标定控制器 |
+## 设备拓扑（部署参考）
 
-包内资源放在各自包目录，以便 `colcon` 正确安装。需求与设计笔记在 `specs/`；振动与通信诊断在 `debug/`。
+| 设备 | 角色（代码中的用法） |
+|------|----------------------|
+| Jetson ORIN Nano | 主臂串口驱动；CAN 或 micro-ROS 从臂；relay / `start_arm_teleop.sh` |
+| Ubuntu 22.04 AMD64 | Gazebo Fortress 仿真从臂（`ROS_DOMAIN_ID=1`） |
+| 开发机 | `scripts/sync_and_build.sh` 同步与远端编译 |
 
-## DDS 隔离（仿真场景）
+连接：主臂串口；从臂 `can0`（CAN 路径）或 `/dev/ttyACM0` + `micro-ros-agent`（micro-ROS 路径）。仿真场景用 `domain_bridge` 跨 DDS domain。
 
-| Domain | 用途 |
-|--------|------|
-| `ROS_DOMAIN_ID=0` | Jetson 主臂 |
-| `ROS_DOMAIN_ID=1` | Ubuntu 从臂仿真 |
+## `src/` 包（实现真相）
 
-`domain_bridge` 将 domain 0 的 `/joint_states` 桥到 domain 1 的 `/leader/joint_states`。
+| 包 | 类型 | 职责（对齐代码） |
+|----|------|------------------|
+| **`rebotarm_gazebo`** | ament_cmake | B601 URDF/Xacro、meshes、Gazebo 世界、`ros2_controllers.yaml`、`rebotarm_gazebo.launch.py`、RViz / gz↔ROS 桥脚本 |
+| **`rebotarm_moveit_config`** | ament_cmake | MoveIt2：SRDF、OMPL、KDL、`demo.launch.py`（mock）、`gazebo_demo.launch.py`、控制器与限位 YAML |
+| **`microros_stm32h723_bridge`** | ament_cmake（`src/plugin/`） | `hardware_interface::SystemInterface` 插件；自定义 msg；Pinocchio 重力库；两个 `controller_interface` 插件；arm / bridge launch；mock / smoke / republisher 脚本 |
+| **`rebotarm_hw_driver`** | ament_python | 经 `reBotArm_control_py` 的 CAN MIT 从臂节点：订阅 `/joint_commands`，发布 `joint_states`，内建 RETURN/HOLD/TRACK 与重力前馈 |
+| **`joint_state_relay`** | ament_python | 主→从映射与限速；三种 mode；`domain_bridge`；`calibrate_gripper` |
 
-## 关节映射（概要）
+辅助目录（非独立 ROS 包）：`scripts/`（启动与校准）、`debug/`（振动/通信诊断）、`systemd/`（micro-ROS agent 单元）、`specs/`。
 
-- 1:7 映射：leader `joint1`–`joint6` → follower `joint1`–`joint6`；leader `joint7_left` → `gripper_finger_left_joint`
-- 变换：`follower_pos = sign * leader_pos + offset`（配置见 `joint_state_relay/config/*.yaml`）
-- 夹爪：leader 弧度 → follower 直线位移（m）；real 驱动侧再换算到电机角度
+## micro-ROS 桥：硬件与控制器
 
-具体 sign/offset 以各 YAML 为准，校准工具见 `scripts/measure_*.py`。
+插件注册（pluginlib）：
+
+| 类 | 基类 | 作用 |
+|----|------|------|
+| `microros_stm32h723_bridge/MicroRosSystem` | `SystemInterface` | 7 槽位 MIT：读 `/stm32/joint_states`，写 `/stm32/joint_commands`；模式 HOLD/TRACK/RETURN/DISABLE；`safe_stop` 服务 |
+| `…/GravityCompensationController` | `ControllerInterface` | 只占 **effort** 命令接口；Pinocchio `GravityCompensation` |
+| `…/Joint4CalibrationController` | `ControllerInterface` | 多姿态回归（gravity_scale / 偏置 / camera_link 等效质量）；与重力控制器 **互斥** |
+
+`stm32h723_arm.launch.py` 用 launch 参数组合位置控制器与重力/标定：
+
+| 参数 | 取值 | 效果 |
+|------|------|------|
+| `position_controller` | `teleop` / `trajectory` / `none` | 激活 teleop、轨迹，或纯 effort 调参 |
+| `enable_gravity_controller` | bool | 与位置控制器可并存（不同接口） |
+| `enable_joint4_calibration` | bool | 加载标定控制器（通常 inactive，由守卫脚本激活） |
+| `enable_gripper` | bool | 导出夹爪 position/effort；`required_joint_mask` 0x7F vs 0x3F |
+| `state_only` | bool | 仅 `stm32_state_republisher`，不启 ros2_control 命令路径 |
+
+消息契约：`JointCommand.msg` / `HardwareStatus.msg`（固定 `float32[7]`，含 sequence、mode、mask、fault）。
+
+## 关节中继三种 mode
+
+| `mode` | 配置文件 | 输出 |
+|--------|----------|------|
+| `gazebo` | `relay.yaml` | `FollowJointTrajectory` → Gazebo `arm_controller` / `gripper_controller` |
+| `real` | `relay_real.yaml` | `sensor_msgs/JointState` → `/joint_commands`（CAN 驱动） |
+| `ros2_control` | `relay_microros_arm.yaml` | `Float64MultiArray` → `/arm_teleop_controller/commands`（及夹爪 teleop） |
+
+映射：`follower = sign * leader + offset`；leader `joint7_left` → `gripper_finger_left_joint`。仿真跨机时 `domain_bridge`：domain 0 `/joint_states` → domain 1 `/leader/joint_states`。
+
+## MoveIt 与仿真
+
+- **独立规划验证**：`rebotarm_moveit_config/demo.launch.py` → `mock_components/GenericSystem`
+- **仿真规划**：`gazebo_demo.launch.py` 包含 `rebotarm_gazebo.launch.py` + `move_group`
+- Gazebo 控制器：`arm_controller` + `gripper_controller`（`JointTrajectoryController`，update_rate 500 Hz）
 
 ## 技术栈
 
-- **ROS 2 Humble**
-- **Ignition Gazebo 6** (Fortress) + **gz_ros2_control**（插件 `ign_ros2_control/IgnitionSystem`）
-- **ros2_control** — `JointTrajectoryController` + `JointStateBroadcaster`（及 teleop / gravity 控制器）
-- **MoveIt2** — OMPL + KDL
-- **Pinocchio**（micro-ROS 桥重力前馈）
+- ROS 2 Humble · ros2_control · controller_manager
+- Ignition Gazebo 6 (Fortress) · gz_ros2_control
+- MoveIt2（OMPL · KDL · MoveItConfigsBuilder）
+- Pinocchio（重力与标定）
+- micro-ROS Agent（串口 XRCE-DDS；本仓库不包含固件）
+- 可选外部：`stararm102_description` / `robo_driver`（主臂，Jetson overlay）
