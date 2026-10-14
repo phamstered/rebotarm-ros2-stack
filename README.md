@@ -12,15 +12,15 @@ ROS 2 Humble **software stack for reBotArm B601** (6-DoF + gripper): robot descr
 | **Simulation** | Ignition Gazebo 6 (Fortress) + gz_ros2_control |
 | **User docs** | [https://phamstered.github.io/rebotarm-ros2-stack/](https://phamstered.github.io/rebotarm-ros2-stack/) |
 
-## Sibling repos (role boundaries)
+## 相关仓库 / 职责
 
-| Repo | Role | Docs |
+| 仓库 | 职责 | 文档 |
 |---|---|---|
-| **This repo** [`rebotarm-ros2-stack`](https://github.com/phamstered/rebotarm-ros2-stack) | ROS 2 control stack (description · sim · ros2_control / micro-ROS · MoveIt · CAN driver · relay) | [Pages](https://phamstered.github.io/rebotarm-ros2-stack/) |
-| [`robot-debug-desk`](https://github.com/phamstered/robot-debug-desk) | Host UI (macOS · SSH tunnel + WebSocket bridge) | [Pages](https://phamstered.github.io/robot-debug-desk/) |
-| [`rebotarm-executor`](https://github.com/phamstered/rebotarm-executor) | FreeRTOS / micro-ROS firmware (STM32) | [Pages](https://phamstered.github.io/rebotarm-executor/) |
+| [`phamstered/robot-debug-desk`](https://github.com/phamstered/robot-debug-desk) | 上位机 | [Pages](https://phamstered.github.io/robot-debug-desk/) |
+| [`phamstered/rebotarm-ros2-stack`](https://github.com/phamstered/rebotarm-ros2-stack) | ROS 2 controller（本仓） | [Pages](https://phamstered.github.io/rebotarm-ros2-stack/) |
+| [`phamstered/rebotarm-executor`](https://github.com/phamstered/rebotarm-executor) | FreeRTOS + micro-ROS 固件 | [Pages](https://phamstered.github.io/rebotarm-executor/) |
 
-This repository is **not** firmware and **not** the desktop UI.
+本仓库是 ROS 2 控制栈，不是固件，也不是上位机 UI。
 
 ## Stack layers (code-aligned)
 
