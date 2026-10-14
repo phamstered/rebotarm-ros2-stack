@@ -1,6 +1,6 @@
-# rebotarm-ros2-stack
+# reBotArm B601 ROS 2 控制栈
 
-ROS 2 Humble **software stack for reBotArm B601** (6-DoF + gripper): robot description and Gazebo Fortress simulation, MoveIt2 motion planning, a ros2_control `SystemInterface` to STM32H723 over micro-ROS (MIT impedance, Pinocchio gravity feed-forward, Joint4/payload calibration), a legacy CAN MIT follower driver, and a configurable joint-state relay / DDS domain bridge.
+[`rebotarm-ros2-stack`](https://github.com/phamstered/rebotarm-ros2-stack) — ROS 2 Humble **software stack for reBotArm B601** (6-DoF + gripper): robot description and Gazebo Fortress simulation, MoveIt2 motion planning, a ros2_control `SystemInterface` to STM32H723 over micro-ROS (MIT impedance, Pinocchio gravity feed-forward, Joint4/payload calibration), a legacy CAN MIT follower driver, and a configurable joint-state relay / DDS domain bridge.
 
 **Leader–follower teleoperation is one application path** (via `joint_state_relay`), not the whole product surface. Prefer reading `src/` over older teleop-only narratives.
 

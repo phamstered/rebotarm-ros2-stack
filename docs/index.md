@@ -2,8 +2,8 @@
 layout: home
 
 hero:
-  name: rebotarm-ros2-stack
-  text: reBotArm B601 的 ROS 2 控制栈
+  name: reBotArm B601 ROS 2 控制栈
+  text: ROS 2 Control Stack
   tagline: 描述 / 仿真 · ros2_control · micro-ROS · MoveIt · CAN 驱动 · 关节中继
   actions:
     - theme: brand
