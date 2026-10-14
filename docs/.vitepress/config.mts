@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: 'rebotarm-ros2-stack',
+  title: 'reBotArm B601 ROS 2 控制栈',
   description:
     'ROS 2 Humble arm control stack for reBotArm B601 — ros2_control, micro-ROS, Gazebo, MoveIt, CAN driver',
   base: '/rebotarm-ros2-stack/',
