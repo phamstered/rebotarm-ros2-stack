@@ -64,6 +64,7 @@ features:
 3. [控制栈与后端](./controllers) — Gazebo / CAN / micro-ROS 与控制器矩阵
 4. [CI 说明](./ci) — GitHub Actions 覆盖范围
 5. [ros2_control 关联机制](./ros2_control_association) — controller ↔ hardware 接口匹配
+6. [一键重力 / 参数辨识（设计）](./gravity-identification) — StartGravityID action 与固件 HOLD 契约
 
 ## 本机预览文档
 

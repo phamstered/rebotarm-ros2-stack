@@ -14,6 +14,7 @@ export default defineConfig({
       { text: '架构', link: '/architecture' },
       { text: '构建与运行', link: '/build-run' },
       { text: '控制栈', link: '/controllers' },
+      { text: '重力辨识', link: '/gravity-identification' },
       { text: 'CI', link: '/ci' },
       {
         text: 'GitHub',
@@ -28,6 +29,12 @@ export default defineConfig({
           { text: '架构与包', link: '/architecture' },
           { text: '构建与运行', link: '/build-run' },
           { text: '控制栈与后端', link: '/controllers' },
+        ],
+      },
+      {
+        text: '设计草案',
+        items: [
+          { text: '一键重力 / 参数辨识', link: '/gravity-identification' },
         ],
       },
       {
