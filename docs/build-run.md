@@ -1,6 +1,6 @@
 # 构建与运行
 
-在已 source ROS 2 Humble 的 shell 中操作。
+在已 source ROS 2 Humble 的 shell 中操作。路径与主机角色见 [架构与包](./architecture)。
 
 ## 本地编译与测试
 
@@ -11,15 +11,14 @@ source install/setup.bash
 colcon test && colcon test-result --verbose
 ```
 
-单包加快迭代：
+单包迭代：
 
 ```bash
 colcon build --packages-select joint_state_relay
-# 或
 colcon build --packages-select microros_stm32h723_bridge
 ```
 
-`rosdep` 安装依赖时，仓库外包（Jetson overlay）可跳过：
+`rosdep` 安装依赖时，跳过仓库外 overlay：
 
 ```bash
 rosdep install --from-paths src --ignore-src -y -r \
@@ -27,72 +26,90 @@ rosdep install --from-paths src --ignore-src -y -r \
   --skip-keys "stararm102_description micro_ros_agent"
 ```
 
-## 同步到远端并编译
+CI 同等覆盖见 [CI 说明](./ci)。
 
-开发机：
+## 同步到远端并编译
 
 ```bash
 ./scripts/sync_and_build.sh
 ```
 
-会 rsync `src/` 与 `scripts/` 到 Jetson 与 Ubuntu 并远程编译。使用前请确认：脚本含 `rsync --delete`，会删除远端多余文件。
+会 rsync `src/` 与 `scripts/` 到 Jetson 与 Ubuntu 并远程编译。脚本含 `rsync --delete`，运行前请确认不会误删远端文件。
 
-## Jetson：主臂 + relay
+## 场景：仿真与规划（无需真机从臂）
 
-必须在 Jetson 上执行：
+| 场景 | 命令 | 说明 |
+|------|------|------|
+| Gazebo 从臂 | `./scripts/start_gazebo.sh`（无头：`--headless=True`） | Ubuntu；`ROS_DOMAIN_ID=1` |
+| 从臂 RViz | `./scripts/start_follower_rviz.sh` | 可视化 |
+| MoveIt mock demo | `ros2 launch rebotarm_moveit_config demo.launch.py` | 无 Gazebo / 无硬件 |
+| MoveIt + Gazebo | `ros2 launch rebotarm_moveit_config gazebo_demo.launch.py` | 规划到仿真控制器 |
 
-```bash
-# 仿真从臂：仅主臂 + relay（从臂在 Ubuntu Gazebo）
-./scripts/start_jetson.sh --mode=gazebo
-
-# 真实从臂：主臂 + 从臂硬件驱动 + relay
-./scripts/start_jetson.sh --mode=real
-```
-
-## Ubuntu：Gazebo 仿真从臂
-
-必须在 Ubuntu 仿真机上执行：
-
-```bash
-./scripts/start_gazebo.sh
-# SSH / 无头
-./scripts/start_gazebo.sh --headless=True
-```
-
-可视化：
-
-```bash
-./scripts/start_follower_rviz.sh
-```
-
-### Gazebo 约定（重要）
+### Gazebo 约定
 
 - 使用 `ign gazebo`（不要用 `gz sim`）：当前 gz_ros2_control 针对 ign-gazebo6
 - 模型 spawn 用 `ign service`（不要用与 ign6 不兼容的 `ros_gz_sim create`）
 - `LD_LIBRARY_PATH` 与 `IGN_GAZEBO_SYSTEM_PLUGIN_PATH` 需包含 `/opt/ros/humble/lib`
-- URDF 中 `package://` 需替换为绝对路径（见 `scripts/prepare_urdf.py`）
+- URDF 中 `package://` 需替换为绝对路径（`scripts/prepare_urdf.py`）
 - `base_link` 通过 world fixed joint 固定在世界原点
 
-## 常用诊断脚本
+## 场景：主从跟随（应用层）
 
-| 脚本 | 位置 | 用途 |
-|------|------|------|
-| `debug_gazebo_data_flow.sh` | Ubuntu | 诊断 Gazebo 数据流 |
-| `monitor_topics.sh` | 任意 | 话题监控 |
-| `measure_zero_offset.py` / `measure_gripper.py` | Jetson | 夹爪零点与映射校准 |
-| `monitor_gripper.py` | Jetson | 夹爪电机状态 |
-| `start_arm_teleop.sh` | Jetson | micro-ROS / ros2_control 遥操与标定入口 |
-| `debug/` | Jetson | Joint4 振动等诊断流水线 |
+| 位置 | 命令 |
+|------|------|
+| Jetson（仿真从臂） | `./scripts/start_jetson.sh --mode=gazebo` |
+| Jetson（CAN 真机从臂） | `./scripts/start_jetson.sh --mode=real` |
+| Ubuntu（配合 gazebo 模式） | `./scripts/start_gazebo.sh` |
 
-校准示例：
+## 场景：micro-ROS ros2_control 真机
+
+前置：systemd `micro-ros-agent-stm32h723`（或等价 agent）已占用串口；固件 active mask 满足关节集合（臂 `0x3F`，含夹爪 `0x7F`）。
 
 ```bash
-./scripts/start_jetson.sh --mode=real
-python3 scripts/measure_zero_offset.py --domain 0 --duration 5
-# 更新 relay_real.yaml 后
-colcon build --packages-select joint_state_relay
-# 重启 relay
+# 带守卫的完整管线（默认 teleop 位置控制器）
+./scripts/start_arm_teleop.sh --clean=true
+
+# 轨迹控制器 + 重力前馈
+./scripts/start_arm_teleop.sh \
+  --position-controller=trajectory --gravity=true --clean=true
+
+# 纯重力调参（无位置控制器；硬件先 inactive）
+./scripts/start_arm_teleop.sh \
+  --position-controller=none --gravity=true --clean=true
+
+# Joint4 多姿态标定
+./scripts/start_arm_teleop.sh --mode=calibration --clean=true
+
+# 仅反馈、不启命令路径
+ros2 launch microros_stm32h723_bridge stm32h723_arm.launch.py state_only:=true
 ```
+
+开发用 mock（无 agent）：
+
+```bash
+ros2 run microros_stm32h723_bridge mock_stm32_node.py
+ros2 launch microros_stm32h723_bridge stm32h723_bridge.launch.py start_agent:=false
+```
+
+单电机冒烟（固件 mask=`0x01`）：
+
+```bash
+ros2 run microros_stm32h723_bridge single_motor_smoke_test.py \
+  --target 0.05 --kp 2.0 --kd 0.2 --duration 2.0
+```
+
+## 校准与诊断
+
+| 工具 | 用途 |
+|------|------|
+| `scripts/measure_zero_offset.py` / `measure_gripper*.py` | 关节 / 夹爪映射 |
+| `ros2 run joint_state_relay calibrate_gripper` | 主臂↔STM32 夹爪端点（只读采样） |
+| `scripts/monitor_topics.sh` / `monitor_gripper.py` | 话题与夹爪监控 |
+| `scripts/debug_gazebo_data_flow.sh` | Gazebo 数据流 |
+| `scripts/sample_moveit_tracking_error.py` | MoveIt 跟踪误差采样 |
+| `debug/` | Joint4 振动、通信、电机参数等诊断流水线 |
+
+校准后更新对应 `joint_state_relay/config/*.yaml` 或硬件 xacro 中的 scale/offset，再 `colcon build` 并重启节点。
 
 ## SSH 约定
 
