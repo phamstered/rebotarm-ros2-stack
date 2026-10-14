@@ -1,6 +1,6 @@
 # 一键全关节重力 / 参数辨识（设计草案）
 
-> 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD**；UI（robot-debug-desk）只调 action。  
+> 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD/TRACK**（「重力辨识会话」，无 GravityID 模式位）；UI（robot-debug-desk）只调 action。  
 > 状态：设计草案（未实现）。现有 `GravityCompensationController` + `Joint4CalibrationController` 仍保留；本设计是其 **一键、全关节、可脚本化** 的上位编排。
 
 ## 1. Goal / Non-goals
@@ -10,8 +10,8 @@
 - 提供 **一次 action 调用** 完成选中关节的重力缩放 / 力矩偏置辨识（可推广到全臂，不限于 joint4）。
 - 动作名（服务器名）：**`/StartGravityID`**；类型名：`microros_stm32h723_bridge/action/GravityIdentification`。
 - 输出可写入 YAML，并支持热加载进 `GravityCompensationController`。
-- 安全：会话内固件保持 **HOLD**；abort / 超时 / 故障 → **立即 HOLD**；夹爪锁定；effort / 速度限幅。
-- 明确 **固件接口契约**（模式、命令超时、fault code、反馈字段），便于 executor 更新 `docs/ros2-interface.md`。
+- 安全：会话内固件仅用现有 **HOLD / TRACK**（无 GravityID 模式位）；abort / 命令丢失 → **HOLD**（不是 DISABLE）；夹爪锁定；effort / 速度限幅。
+- 明确 **固件接口契约**（「重力辨识会话」、命令超时、fault code 十进制现网值、反馈字段），与 executor `docs/ros2-interface.md` 对齐。
 
 ### Non-goals
 
@@ -82,15 +82,26 @@ string   yaml_path                # 写出路径；未写则为空
 string   message
 ```
 
-### 2.5 固件侧需对齐的「会话」语义（给 executor）
+### 2.5 固件侧「重力辨识会话」语义（对齐 executor）
+
+上位编排在固件侧 **不**增加 GravityID 模式位或专用消息。辨识会话 = 一串合法的 **HOLD / TRACK** `JointCommand` + 照常发布的 `JointState` / `HardwareStatus`（与 [rebotarm-executor PR #7](https://github.com/phamstered/rebotarm-executor/pull/7) / `docs/ros2-interface.md`「重力辨识会话」一致）。
 
 ROS 编排节点在会话中只要求固件：
 
-1. **持续接受并执行 `JointCommand`，模式为 `MODE_HOLD`（0）**，`position[]` = 当前保持位姿，`velocity[]` = 0，`effort[]` = 重力前馈（由 host 写入 effort 接口后由 `MicroRosSystem` 合成）。
+1. **持续接受并执行 `JointCommand`**（与正常 HOLD/TRACK 相同频率，不得停发）。
 2. **测量**：照常发布 `JointState`（position / velocity / effort）与 `HardwareStatus`。
 3. **不**实现 `begin_pose` / `fit` 等服务；那些留在 ROS 或被 action 取代。
 
-激励换姿时：host 可短暂切 `MODE_TRACK`（1）走到下一姿态，到位后立刻回到 `MODE_HOLD`。固件无需识别「辨识模式」枚举；**辨识会话 = 一串合法 HOLD/TRACK 命令 + 更严的超时/限幅约定**。
+阶段约定：
+
+| 阶段 | 固件期望 | 说明 |
+|------|----------|------|
+| 换姿激励 | 短暂 `MODE_TRACK`（1） | 到位后 host 立即切回静置策略 |
+| 静置 / 采样（无前馈） | `MODE_HOLD`（0） | 首次进入 HOLD 时固件锁存实测位置；发送速度 0、**力矩 0**，沿用命令 kp/kd |
+| 静置 / 采样（需重力前馈） | **`MODE_TRACK` @ velocity≈0**，`effort[]` = 重力前馈 | **现网 HOLD 会清零 MIT effort**；不要假设 HOLD 能保持重力前馈。若未来固件提供 HOLD-with-effort，再同步 bump 本文与 executor 接口文档 |
+| Abort / cancel | host 下发 HOLD | **不**自动 DISABLE；DISABLE 仅走现有 `safe_stop` / 反馈超时等路径 |
+
+固件无需识别「辨识模式」枚举；超时 / 命令丢失走现网 **command-loss → HOLD** 路径（见 §4.3）。
 
 ---
 
@@ -147,8 +158,8 @@ notes: ""
 | 1 | `PHASE_ARMING` | 切控制器、夹爪锁、检查 HardwareStatus |
 | 2 | `PHASE_ARMED` | 已进入会话，等待首个激励 |
 | 3 | `PHASE_MOVING` | TRACK 前往姿态 |
-| 4 | `PHASE_HOLD_SETTLE` | HOLD 静置 |
-| 5 | `PHASE_CAPTURING` | HOLD 采样窗 |
+| 4 | `PHASE_HOLD_SETTLE` | 静置（HOLD，或需前馈时 TRACK@v≈0） |
+| 5 | `PHASE_CAPTURING` | 采样窗（同上；现网 HOLD 清零 effort） |
 | 6 | `PHASE_FITTING` | 最小二乘 / 回归 |
 | 7 | `PHASE_WRITING` | 写 YAML / 热加载 |
 | 8 | `PHASE_ABORTING` | 正在 abort → HOLD |
@@ -166,9 +177,9 @@ IDLE → ARMING → ARMED → (MOVING → HOLD_SETTLE → CAPTURING)×N
 **Abort 契约（硬要求）**：
 
 1. Action cancel 或内部故障 → 立即停止激励轨迹。
-2. Host 对所有活动关节下发 **`JointCommand.mode = MODE_HOLD (0)`**，`position = 当前实测位置`，`velocity = 0`，`effort = 当前安全重力前馈（或 0，若前馈未就绪）`。
+2. Host 对所有活动关节下发 **`JointCommand.mode = MODE_HOLD (0)`**，`position = 当前实测位置`，`velocity = 0`（现网 HOLD 下 MIT effort 为 0；abort 优先进 HOLD，不是 DISABLE）。
 3. 夹爪保持锁定 HOLD。
-4. 不自动 DISABLE；DISABLE 仅走现有 `safe_stop` 流程。
+4. 不自动 DISABLE；DISABLE 仅走现有 `safe_stop` / 反馈超时等硬件保护路径。
 5. Feedback.phase = `PHASE_ABORTING`，然后 Result.success=false。
 
 ### 4.3 固件命令超时（command timeout）— executor 必写进 ros2-interface
@@ -177,29 +188,34 @@ IDLE → ARMING → ARMED → (MOVING → HOLD_SETTLE → CAPTURING)×N
 |-------------|------|
 | 命令流 | Host 在会话内按现有桥接频率持续发 `JointCommand`（与正常 HOLD/TRACK 相同） |
 | **`command_timeout_ms`** | 固件在 **最后一帧合法 JointCommand** 之后若超过此时长未收到新命令 → 判定命令丢失 |
-| 默认建议 | 辨识会话：**100 ms**（与桥 `state_timeout_ms: 100` 同量级）；Goal 可覆盖，固件可拒绝过宽值 |
-| 超时后固件行为 | 1) 锁存故障 2) **关节进入 HOLD（保持最后合法 position，effort=0 或固件安全值）** 3) `HardwareStatus.mode` 反映 HOLD 或安全态 4) `fault_code` 置命令丢失码 |
-| Host 行为 | 读到该 fault → action ABORTING → 继续发 HOLD（若链路恢复）或引导 `safe_stop` |
+| 默认建议 | Host 期望对齐约 **100 ms**（与桥 `state_timeout_ms: 100` / 固件 `COMMAND_TIMEOUT_MS` 同量级）；现网超时不可由 Goal 运行时改写 |
+| 超时后固件行为（现网） | 与 executor `COMMAND_TIMEOUT_MS`（100，TRACK→HOLD、不置故障）及 `COMMAND_LOSS_LATCH_MS`（500 → 锁存 **fault_code = 11**，若已使能则 **HOLD**，否则 DISABLE）一致；会话 abort 契约取 **HOLD**，不是 DISABLE |
+| Host 行为 | 读到 fault **11** → action ABORTING → 若链路仍通可继续发 HOLD；否则引导 `safe_stop` |
 
-> 固件 **不**需要单独的「GravityID 模式位」；超时策略可与现网命令丢失一致，但文档须写明：**辨识会话依赖同一 command-loss → HOLD 路径**，且 desk/编排不得在会话中停发命令。
+> 固件 **不**增加 GravityID 模式位。辨识会话依赖现网 **command-loss → HOLD** 路径（见 executor「重力辨识会话」）；desk/编排不得在会话中停发命令。Goal.`command_timeout_ms` 为 host 侧期望对齐值；现网超时为编译期常量，固件不接受运行时改写。
 
 ### 4.4 Fault codes（`HardwareStatus.fault_code`，uint16）
 
-与 executor `docs/ros2-interface.md` 对齐时建议采用下列 **命名与语义**（具体数值以 executor 现网表为准；若尚未占用，推荐值如下）：
+**权威为 executor 现网十进制枚举**（`MotorBridgeFault`，不是位标志）。下列草案名仅作别名；**不得**再使用 `0x0001` 风格虚构十六进制位。数值以 [rebotarm-executor PR #7](https://github.com/phamstered/rebotarm-executor/pull/7) / `docs/ros2-interface.md` 为准。
 
-| Code (建议) | 名 | 谁置位 | 会话内 ROS 动作 |
-|-------------|-----|--------|-----------------|
-| 0 | `FAULT_NONE` | — | 继续 |
-| 0x0001 | `FAULT_CMD_LOSS` | 固件 | abort → HOLD |
-| 0x0002 | `FAULT_STALE_SEQUENCE` | 固件 | abort；需按现网清序列/重启策略 |
-| 0x0004 | `FAULT_MOTOR` | 固件 | abort → HOLD；禁止继续激励 |
-| 0x0008 | `FAULT_EFFORT_LIMIT` | 固件或 ROS | abort → HOLD |
-| 0x0010 | `FAULT_VELOCITY_LIMIT` | ROS（pose 安全）或固件 | abort → HOLD |
-| 0x0020 | `FAULT_POSITION_DEVIATION` | ROS（HOLD 偏离参考过大） | 本姿态作废或整次 abort（可配置） |
-| 0x0040 | `FAULT_GRIPPER_UNLOCKED` | ROS | abort（若要求 lock_gripper） |
-| 0x0080 | `FAULT_SESSION_REJECTED` | 固件（可选：拒绝过宽 timeout） | 不进入 ARMED |
+| 现网值 | 草案别名 | 现网符号 | 谁置位 | 会话内 ROS 动作 |
+|-------:|----------|----------|--------|-----------------|
+| 0 | `FAULT_NONE` | `MOTOR_FAULT_NONE` | — | 继续 |
+| **11** | `FAULT_CMD_LOSS` | `MOTOR_FAULT_COMMAND_LOSS_LATCHED` | 固件 | abort → HOLD |
+| **4** | `FAULT_STALE_SEQUENCE` | `MOTOR_FAULT_STALE_SEQUENCE` | 固件 | abort；按现网清序列/重启策略 |
+| **7** | `FAULT_MOTOR` | `MOTOR_FAULT_DRIVE` | 固件 | abort → HOLD；禁止继续激励（驱动故障现网常伴随 DISABLE） |
+| **3**（近义） | `FAULT_EFFORT_LIMIT` | `MOTOR_FAULT_COMMAND_LIMIT` | 固件 | abort → HOLD；现网为收命令时 kp/kd/\|effort\| 超限，非运行中力矩限幅专用码 |
 
-ROS Result/Feedback 的 `fault_code` **原样透传** `HardwareStatus.fault_code`；ROS 自检故障可用高位（例如 `0x8000 | local_code`）并在 `message` 说明，避免与固件码冲突。
+以下 **留在 ROS 侧**（或未来扩展）；**勿占用**固件 0–12：
+
+| 草案名 | 现网值 | 谁置位 | 会话内 ROS 动作 |
+|--------|--------|--------|-----------------|
+| `FAULT_VELOCITY_LIMIT` | — | ROS | abort → HOLD |
+| `FAULT_POSITION_DEVIATION` | — | ROS | 本姿态作废或整次 abort（可配置） |
+| `FAULT_GRIPPER_UNLOCKED` | — | ROS | abort（若要求 lock_gripper） |
+| `FAULT_SESSION_REJECTED` | — | ROS | 不进入 ARMED；现网无「拒绝过宽 timeout」码 |
+
+ROS Result/Feedback 的 `fault_code` **原样透传** `HardwareStatus.fault_code`；ROS 自检故障可用高位（例如 `0x8000 | local_code`）并在 `message` 说明，避免与固件 0–12 冲突。现网另有码（1、2、5、6、8、9、10、12）语义不变；会话中出现时同样应停止激励并按安全策略处理。
 
 ### 4.5 固件反馈字段（meas）— 供采样
 
@@ -221,7 +237,7 @@ ROS Result/Feedback 的 `fault_code` **原样透传** `HardwareStatus.fault_code
 
 - **ARMED 前置**：`fault_code==0`、夹爪已锁、目标控制器已激活、与 `gravity_compensation_controller` / `joint4_calibration_controller` 互斥切换完成。
 - **Gripper lock**：`lock_gripper=true` 时夹爪 `MODE_HOLD` 在固定开合，会话结束前不 TRACK。
-- **Effort / vel limits**：激励与 HOLD 校正均受 `effort_limits` 与 Goal 上限约束；超限 → fault → HOLD。
+- **Effort / vel limits**：激励与静置（HOLD 或 TRACK@v≈0）均受 `effort_limits` 与 Goal 上限约束；超限 → fault → HOLD。
 - **人工支持**：第一版激励幅度保守；文档要求急停就绪（与现 Joint4 标定相同）。
 
 ---
@@ -231,7 +247,7 @@ ROS Result/Feedback 的 `fault_code` **原样透传** `HardwareStatus.fault_code
 全臂重力（`mode=FULL_ARM_GRAVITY`）：
 
 1. 使用预录 / 几何生成的 \(N \ge 2 \times n_{\mathrm{dof}}\) 组静态姿态（默认 N≈12），使各关节重力力矩符号与幅值充分变化。
-2. 每姿态：`MOVING`（限速 TRACK）→ `HOLD_SETTLE`（`settle_time_s`，\|q̇\| &lt; 阈值）→ `CAPTURING`（窗内均值 \(\bar q, \bar\tau_{\mathrm{meas}}\)）。
+2. 每姿态：`MOVING`（限速 TRACK）→ `HOLD_SETTLE`（`settle_time_s`，\|q̇\| &lt; 阈值；无前馈用 HOLD，需前馈用 TRACK@v≈0）→ `CAPTURING`（窗内均值 \(\bar q, \bar\tau_{\mathrm{meas}}\)）。
 3. 模型：\( \tau_{\mathrm{model}} = g(q) \)（现有 Pinocchio `GravityCompensation`）。
 4. 拟合（每关节独立一阶）：  
    \(\tau_{\mathrm{meas},j} \approx s_j \, \tau_{\mathrm{model},j} + b_j\)  
@@ -267,13 +283,14 @@ Payload 子模式见 §6。
 
 ### rebotarm-executor（固件）
 
-- 文档 `docs/ros2-interface.md`：确认并写明  
-  - 辨识会话仅使用 **meas + HOLD**（及换姿 TRACK）；  
-  - **`command_timeout_ms` → fault → HOLD**；  
-  - **`fault_code` 表**（上表命名）；  
+- 文档 `docs/ros2-interface.md`「重力辨识会话」（见 PR #7）：  
+  - 会话仅用 **meas + HOLD/TRACK**，**无** GravityID 模式位；  
+  - 命令丢失 → **HOLD**（不是会话 abort 首选 DISABLE）；  
+  - **`fault_code` 现网十进制表**（CMD_LOSS=11，STALE_SEQUENCE=4，MOTOR=7 等）；  
+  - 现网 HOLD 清零 MIT effort；前馈用 TRACK@v≈0（或未来 HOLD-with-effort）；  
   - `JointCommand` / `JointState` / `HardwareStatus` 字段稳定。  
 - 实现/核对：命令丢失锁存、HOLD 保持、effort 限幅；**不**实现辨识算法。
-- 若需可配置超时：接受 host 侧参数或保持编译默认，并在接口文档写死默认值。
+- 超时为编译期常量（`COMMAND_TIMEOUT_MS` / `COMMAND_LOSS_LATCH_MS`）；不接受 Goal 运行时改写。
 
 ### robot-debug-desk（UI）
 
@@ -289,10 +306,11 @@ Payload 子模式见 §6。
 |------|--------|
 | `GravityCompensation` + `gravity_scales` | 继续作为前馈与模型源；增加 biases + YAML 热加载 |
 | `Joint4CalibrationController` 手工 Trigger | 保留；payload 子模式自动编排可复用其拟合思想 |
-| 固件 MODE_HOLD/TRACK + HardwareStatus | 会话唯一依赖；明确 timeout / fault / abort→HOLD |
+| 固件 MODE_HOLD/TRACK + HardwareStatus | 会话唯一依赖（「重力辨识会话」）；command-loss→HOLD；fault 用现网十进制 |
 
 ## 9. 开放问题（实现前拍板）
 
 1. `torque_biases` 是否第一版就写入 GravityCompensationController（建议：是，默认 0）。
 2. 激励姿态集：内置表 vs desk 下发 `pose_set_id`。
-3. fault code 数值是否已在 executor 占用（以 executor 表为权威，本文名为契约）。
+3. ~~fault code 数值是否已在 executor 占用~~ — **已拍板**：以 executor 现网十进制为准（见 §4.4；别名映射见 executor PR #7）。
+4. 静置/采样是否第一版就强制 TRACK@v≈0 前馈，还是允许纯 HOLD（effort=0）采样后再拟合（建议：有 GravityCompensation 时用 TRACK@v≈0）。
