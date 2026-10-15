@@ -1,6 +1,6 @@
 # 一键全关节重力 / 参数辨识（设计草案）
 
-> 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD/TRACK**（「重力辨识会话」，无 GravityID 模式位）；UI（robot-debug-desk）只调 action。  
+> 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD/TRACK**（「重力辨识会话」，无 GravityID 模式位）；UI（rebotarm-debug-desk）只调 action。  
 > 状态：设计草案（未实现）。现有 `GravityCompensationController` + `Joint4CalibrationController` 仍保留；本设计是其 **一键、全关节、可脚本化** 的上位编排。
 
 ## 1. Goal / Non-goals
@@ -292,7 +292,7 @@ Payload 子模式见 §6。
 - 实现/核对：命令丢失锁存、HOLD 保持、effort 限幅；**不**实现辨识算法。
 - 超时为编译期常量（`COMMAND_TIMEOUT_MS` / `COMMAND_LOSS_LATCH_MS`）；不接受 Goal 运行时改写。
 
-### robot-debug-desk（UI）
+### rebotarm-debug-desk（UI）
 
 - 调用 `/StartGravityID`；绑定 Feedback：`phase`、`pose_index`/`pose_count`、`residual_nm`、`fault_code`、`message`。
 - 展示 Result scales/biases/RMSE；提供保存 / 热加载开关（对应 Goal 字段）。

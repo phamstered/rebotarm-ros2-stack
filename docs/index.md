@@ -42,7 +42,7 @@ features:
 | **仿真** | Ignition Gazebo 6 (Fortress) + gz_ros2_control |
 | **真机路径** | micro-ROS（STM32H723）或 CAN MIT（`rebotarm_hw_driver`） |
 
-固件（STM32 / FreeRTOS / micro-ROS 节点）见兄弟仓库 **rebotarm-executor**；上位机 UI 见 **robot-debug-desk**。本站只覆盖本仓库的 ROS 2 控制栈。
+固件（STM32 / FreeRTOS / micro-ROS 节点）见兄弟仓库 **rebotarm-executor**；上位机 UI 见 **rebotarm-debug-desk**。本站只覆盖本仓库的 ROS 2 控制栈。
 
 ## 能力一览（对齐代码）
 
