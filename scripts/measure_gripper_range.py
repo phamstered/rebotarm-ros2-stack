@@ -142,7 +142,7 @@ def main():
                         help='自动模式，跳过确认提示')
     args = parser.parse_args()
 
-    # 默认使用 leader_follower 项目的 CAN 配置
+    # 默认使用 rebotarm-ros2-stack 项目的 CAN 配置
     if args.config is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         project_dir = os.path.dirname(script_dir)

@@ -175,7 +175,7 @@ echo ""
 # ─── 7. Relay 配置检查 ───
 echo "── 7. Relay 配置检查 ──"
 
-RELAY_CFG="/home/jialiang/Project/leader_follower/install/joint_state_relay/share/joint_state_relay/config/relay.yaml"
+RELAY_CFG="/home/jialiang/Project/rebotarm-ros2-stack/install/joint_state_relay/share/joint_state_relay/config/relay.yaml"
 if [ -f "$RELAY_CFG" ]; then
     MODE=$(grep '^mode:' "$RELAY_CFG" | awk '{print $2}' | tr -d '"')
     LEADER_TOPIC=$(grep '^leader_topic:' "$RELAY_CFG" | awk '{print $2}' | tr -d '"')

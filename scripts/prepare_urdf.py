@@ -4,7 +4,7 @@ import xacro
 import re
 import os
 
-ws = os.environ.get('GAZEBO_WS', os.path.expanduser('~/Project/leader_follower'))
+ws = os.environ.get('GAZEBO_WS', os.path.expanduser('~/Project/rebotarm-ros2-stack'))
 pkg = ws + '/install/rebotarm_gazebo/share/rebotarm_gazebo'
 xacro_path = pkg + '/urdf/rebotarm.urdf.xacro'
 
