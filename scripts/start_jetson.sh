@@ -45,7 +45,7 @@ trap cleanup EXIT
 trap 'exit 0' INT TERM
 
 LEADER_WS="$HOME/Project/Star-Arm-102/ROS2_HUMBLE"
-RELAY_WS="$HOME/Project/leader_follower"
+RELAY_WS="$HOME/Project/rebotarm-ros2-stack"
 
 source /opt/ros/humble/setup.bash
 

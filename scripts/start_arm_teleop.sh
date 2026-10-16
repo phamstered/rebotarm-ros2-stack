@@ -2,7 +2,7 @@
 # Start and verify the joint1-6 leader-to-follower ros2_control pipeline.
 set -eo pipefail
 
-WORKSPACE_DIR="${LEADER_FOLLOWER_WS:-$HOME/Project/leader_follower}"
+WORKSPACE_DIR="${LEADER_FOLLOWER_WS:-$HOME/Project/rebotarm-ros2-stack}"
 LEADER_WORKSPACE_DIR="${LEADER_ARM_WS:-$HOME/Project/Star-Arm-102/ROS2_HUMBLE}"
 ROS_SETUP="/opt/ros/humble/setup.bash"
 WORKSPACE_SETUP="$WORKSPACE_DIR/install/setup.bash"
@@ -507,7 +507,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 stage "ROS environment and stale-process cleanup"
-pass "ROS 2 Humble and leader_follower overlay are sourced (domain $ROS_DOMAIN_ID)."
+pass "ROS 2 Humble and rebotarm-ros2-stack overlay are sourced (domain $ROS_DOMAIN_ID)."
 if [[ "$CLEAN_BEFORE_START" == "true" ]]; then
     echo "Cleaning stale arm teleoperation processes."
     stop_matching_processes \

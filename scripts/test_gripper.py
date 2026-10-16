@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path.home() / 'Project' / 'reBotArm_control_py' / '.venv'
 from reBotArm_control_py.actuator.gripper import Gripper
 
 # 配置
-GRIPPER_CFG = str(Path.home() / 'Project' / 'leader_follower' / 'src' / 'rebotarm_hw_driver' / 'config' / 'gripper_can.yaml')
+GRIPPER_CFG = str(Path.home() / 'Project' / 'rebotarm-ros2-stack' / 'src' / 'rebotarm_hw_driver' / 'config' / 'gripper_can.yaml')
 TORQUE_THRESHOLD = 1.0  # Nm, 超过此值停止 (增大阈值)
 POSITION_STEP = 0.2  # rad, 每步移动量 (增大步长)
 POSITION_RANGE = (-3.0, 3.0)  # rad, 测试范围

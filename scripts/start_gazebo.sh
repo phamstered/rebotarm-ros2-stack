@@ -9,7 +9,7 @@ for arg in "$@"; do
     esac
 done
 
-GAZEBO_WS="$HOME/Project/leader_follower"
+GAZEBO_WS="$HOME/Project/rebotarm-ros2-stack"
 MODEL_DIR="$GAZEBO_WS/install/rebotarm_gazebo/share/rebotarm_gazebo/models"
 
 # ── 停止所有旧仿真/MoveIt/可视化进程 ──

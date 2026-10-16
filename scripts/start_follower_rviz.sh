@@ -11,7 +11,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-GAZEBO_WS="$HOME/Project/leader_follower"
+GAZEBO_WS="$HOME/Project/rebotarm-ros2-stack"
 
 # 清理旧进程
 echo "=== Cleaning up old processes ==="

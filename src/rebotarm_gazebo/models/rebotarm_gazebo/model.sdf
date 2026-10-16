@@ -123,7 +123,7 @@
 
     <plugin filename="gz_ros2_control-system"
             name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-      <parameters>/home/jialiang/Project/leader_follower/install/rebotarm_gazebo/share/rebotarm_gazebo/config/ros2_controllers.yaml</parameters>
+      <parameters>/home/jialiang/Project/rebotarm-ros2-stack/install/rebotarm_gazebo/share/rebotarm_gazebo/config/ros2_controllers.yaml</parameters>
     </plugin>
   </model>
 </sdf>
