@@ -9,8 +9,8 @@ gripper:
     model: "4310"
     vendor: "damiao"
     MIT:
-      kp: 8.0
-      kd: 1.0
+      kp: 100.0
+      kd: 3.0
     POS_VEL:
       vel_kp: 0.0008
       vel_ki: 0.002

@@ -33,15 +33,15 @@ _KD_RETURN_123 = 3.0
 _KP_HOLD_123 = 20.0
 _KD_HOLD_123 = 2.0
 _KP_TRACK_123 = 40.0
-_KD_TRACK_123 = 6.0
+_KD_TRACK_123 = 3.0
 
 # joint4-6 (小电机，降低增益减少振荡)
 _KP_RETURN_456 = 15.0
 _KD_RETURN_456 = 2.0
 _KP_HOLD_456 = 10.0
 _KD_HOLD_456 = 1.5
-_KP_TRACK_456 = 20.0
-_KD_TRACK_456 = 3.0
+_KP_TRACK_456 = 15.0
+_KD_TRACK_456 = 1.5
 
 # 通用
 _KP_IDLE = 0.0
@@ -55,8 +55,8 @@ _CMD_TIMEOUT = 0.1
 # Prismatic: 0 m (closed) ~ 0.02 m (open)
 # Scale: -2.66 / 0.02 = -133
 _GRIPPER_POS_SCALE = -133.0
-_GRIPPER_KP = 6.0   # 降低 kp 减少振荡
-_GRIPPER_KD = 1.5   # 降低 kd
+_GRIPPER_KP = 100.0
+_GRIPPER_KD = 3.0
 _GRIPPER_EMA_ALPHA = 0.5  # 滤波系数 (可被 ROS2 参数覆盖)
 _GRIPPER_DEADBAND = 0.0005  # 死区 (m)
 

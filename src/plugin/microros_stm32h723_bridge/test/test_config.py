@@ -16,6 +16,8 @@ def test_all_gain_groups_have_seven_finite_nonnegative_values():
             assert all(isinstance(value, (int, float)) and value >= 0 for value in values)
     assert len(config['effort_limits']) == 7
     assert all(value > 0 for value in config['effort_limits'])
+    assert config['track']['kp'][6] == 100.0
+    assert config['track']['kd'][6] == 3.0
 
 
 def test_joint_command_uses_only_fixed_size_control_arrays():
@@ -217,7 +219,7 @@ def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
     expected_gains = {
         'return': ([30.0] * 3 + [15.0] * 3, [3.0] * 3 + [2.0] * 3),
         'hold': ([20.0] * 3 + [10.0] * 3, [2.0] * 3 + [1.5] * 3),
-        'track': ([40.0] * 4 + [10.0] * 2, [3.0] * 3 + [1.5] * 3),
+        'track': ([40.0] * 3 + [15.0] * 3, [3.0] * 3 + [1.5] * 3),
         'idle': ([0.0] * 6, [1.0] * 6),
     }
     for group_name, (expected_kp, expected_kd) in expected_gains.items():
@@ -254,10 +256,13 @@ def test_hardware_supports_calibrated_gripper_position_conversion():
 def test_gripper_gain_profile_never_returns_to_closed_position():
     config = yaml.safe_load(
         (PACKAGE_ROOT / 'config' / 'arm_gripper_mit_gains.yaml').read_text())
+    assert config['track']['kp'][3:6] == [15.0] * 3
+    assert config['track']['kd'][3:6] == [1.5] * 3
     assert config['return']['kp'][6] == 0.0
     assert config['return']['kd'][6] == 1.0
     assert config['hold']['kp'][6] == 2.0
-    assert config['track']['kp'][6] == 2.0
+    assert config['track']['kp'][6] == 100.0
+    assert config['track']['kd'][6] == 3.0
     assert config['effort_limits'][6] == 2.0
 
     hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
