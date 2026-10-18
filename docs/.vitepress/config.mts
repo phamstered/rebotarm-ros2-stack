@@ -29,6 +29,7 @@ export default defineConfig({
           { text: '架构与包', link: '/architecture' },
           { text: '构建与运行', link: '/build-run' },
           { text: '控制栈与后端', link: '/controllers' },
+          { text: 'VLA 集成 (scheme B)', link: '/vla-integration' },
         ],
       },
       {

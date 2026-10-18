@@ -54,6 +54,7 @@ features:
 | 重力前馈（effort-only，Pinocchio） | `GravityCompensationController` |
 | Joint4 + camera_link 负载多姿态标定 | `Joint4CalibrationController` |
 | 位置遥操 / 轨迹控制器 + 夹爪 | `arm_teleop_controller`、`arm_trajectory_controller`、`gripper_teleop_controller` |
+| VLA scheme B（chunk → position） | `VlaPositionController` + `/vla/joint_chunk`（见 [VLA 集成](./vla-integration)） |
 | CAN 侧 MIT 驱动（非 ros2_control 插件） | `rebotarm_hw_driver` |
 | 关节映射中继、domain bridge、夹爪端点校准 | `joint_state_relay` |
 

@@ -14,4 +14,12 @@
       Bounded joint4 soft-hold controller with multi-pose gravity and payload regression.
     </description>
   </class>
+  <class
+    name="microros_stm32h723_bridge/VlaPositionController"
+    type="microros_stm32h723_bridge::VlaPositionController"
+    base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Position-only VLA chunk subscriber; mutually exclusive with teleop/trajectory.
+    </description>
+  </class>
 </library>

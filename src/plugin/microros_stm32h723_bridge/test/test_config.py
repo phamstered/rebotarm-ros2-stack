@@ -108,6 +108,8 @@ def test_bringup_controllers_claim_joints_1_to_6():
         'microros_stm32h723_bridge/GravityCompensationController')
     assert manager['joint4_calibration_controller']['type'] == (
         'microros_stm32h723_bridge/Joint4CalibrationController')
+    assert manager['vla_position_controller']['type'] == (
+        'microros_stm32h723_bridge/VlaPositionController')
     assert config['arm_teleop_controller']['ros__parameters']['joints'] == (
         expected_joints)
     assert config['gripper_teleop_controller']['ros__parameters']['joints'] == [
@@ -128,6 +130,11 @@ def test_bringup_controllers_claim_joints_1_to_6():
     assert 0.0 < calibration['max_position_error'] <= 0.12
     assert 0.0 < calibration['max_calibration_velocity'] <= 0.20
     assert calibration['capture_velocity_threshold'] <= 0.01
+    vla = config['vla_position_controller']['ros__parameters']
+    assert vla['joints'] == expected_joints
+    assert vla['chunk_topic'] == '/vla/joint_chunk'
+    assert vla['command_timeout_sec'] == 0.2
+    assert vla['max_delta_per_sec'] == 1.0
 
 
 def test_realsense_camera_contributes_mass_to_gravity_model():
@@ -267,3 +274,42 @@ def test_gripper_gain_profile_never_returns_to_closed_position():
 
     hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
     assert 'std::abs(return_gains_.kp[index]) <= 1e-9' in hardware_source
+
+def test_vla_joint_chunk_message_is_simple():
+    definition = (PACKAGE_ROOT / 'msg' / 'VlaJointChunk.msg').read_text()
+    assert 'std_msgs/Header header' in definition
+    assert 'float32[] positions' in definition
+    assert 'float32 timeout_sec' in definition
+
+
+def test_vla_position_controller_is_registered_and_position_only():
+    source = (PACKAGE_ROOT / 'src' / 'vla_position_controller.cpp').read_text()
+    header = (
+        PACKAGE_ROOT / 'include' / 'microros_stm32h723_bridge' /
+        'vla_position_controller.hpp').read_text()
+    plugin = ET.parse(
+        PACKAGE_ROOT / 'gravity_compensation_controller.xml').getroot()
+    plugin_names = {item.attrib['name'] for item in plugin.findall('class')}
+    cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
+    yaml_text = (PACKAGE_ROOT / 'config' / 'arm_controllers.yaml').read_text()
+
+    assert 'microros_stm32h723_bridge/VlaPositionController' in plugin_names
+    assert 'HW_IF_POSITION' in source
+    assert 'HW_IF_EFFORT' not in source
+    assert 'chunk_topic' in source
+    assert 'command_timeout_sec' in source
+    assert 'max_delta_per_sec' in source
+    assert 'holding last positions' in source
+    assert 'VlaPositionController' in header
+    assert 'src/vla_position_controller.cpp' in cmake_source
+    assert 'msg/VlaJointChunk.msg' in cmake_source
+    assert 'scripts/mock_vla_chunk_publisher.py' in cmake_source
+    assert 'Mutually exclusive with arm_teleop_controller' in yaml_text
+    assert '/stm32/joint_commands' in yaml_text
+
+
+def test_mock_vla_chunk_publisher_targets_default_topic():
+    script = (PACKAGE_ROOT / 'scripts' / 'mock_vla_chunk_publisher.py').read_text()
+    assert "declare_parameter('topic', '/vla/joint_chunk')" in script
+    assert 'VlaJointChunk' in script
+
