@@ -65,6 +65,7 @@ STM32H723 固件（rebotarm-executor）
 | `gripper_teleop_controller` | JointGroupPositionController | 夹爪 position | `enable_gripper:=true` 时 |
 | `gravity_compensation_controller` | 自定义 | **仅** effort | 可选 |
 | `joint4_calibration_controller` | 自定义 | effort + 多 Trigger 服务 | 标定模式；与重力互斥 |
+| `vla_position_controller` | 自定义 | **仅** position · j1–6 | VLA scheme B；与 teleop/trajectory 互斥；可与重力并行 |
 
 ### 安全与运维要点
 
@@ -106,3 +107,8 @@ controller 与 hardware **无显式绑定**，靠关节名 + 接口类型匹配�
 3. 写入上述某一后端的命令接口
 
 micro-ROS 一键守卫启动：`./scripts/start_arm_teleop.sh`（九段自检：主臂、agent、STM32 mask、controllers、hardware、反馈、relay、命令序列 ack）。可同时 `--gravity=true`、`--gripper=true`，或切换 `--position-controller=trajectory`。
+
+## VLA（scheme B）
+
+外部推理发布 `/vla/joint_chunk`（`VlaJointChunk`）→ `VlaPositionController` 写 position，可选 `gravity_compensation_controller` 写 effort → `MicroRosSystem` 合成 MIT。不要把直接写 `/stm32/joint_commands` 作为主路径。详见 [VLA integration](./vla-integration)。
+

@@ -17,6 +17,22 @@ For supported-arm tuning without a position controller, run:
   --position-controller=none --gravity=true --clean=true
 ```
 
+## VLA position controller (scheme B)
+
+`vla_position_controller` claims **position** interfaces only and subscribes to
+`/vla/joint_chunk` (`VlaJointChunk`). It is mutually exclusive with
+`arm_teleop_controller` / `arm_trajectory_controller`, and can run alongside
+`gravity_compensation_controller`. On chunk timeout it holds the last command;
+do not use a direct `/stm32/joint_commands` write as the primary VLA path.
+
+Bring-up mock:
+
+```bash
+ros2 run microros_stm32h723_bridge mock_vla_chunk_publisher.py
+```
+
+See `docs/vla-integration.md` in the workspace root.
+
 ## Joint4 multi-pose calibration
 
 The `joint4_calibration_controller` replaces the normal gravity controller

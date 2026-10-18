@@ -36,6 +36,7 @@ find_package(yaml-cpp REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointCommand.msg"
   "msg/HardwareStatus.msg"
+  "msg/VlaJointChunk.msg"
   DEPENDENCIES std_msgs
 )
 
@@ -68,6 +69,7 @@ add_library(${GRAVITY_CONTROLLER_LIBRARY} SHARED
   src/gravity_compensation.cpp
   src/gravity_compensation_controller.cpp
   src/joint4_calibration_controller.cpp
+  src/vla_position_controller.cpp
 )
 target_include_directories(${GRAVITY_CONTROLLER_LIBRARY} PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -84,6 +86,7 @@ ament_target_dependencies(${GRAVITY_CONTROLLER_LIBRARY}
   std_srvs
 )
 target_link_libraries(${GRAVITY_CONTROLLER_LIBRARY} pinocchio::pinocchio)
+target_link_libraries(${GRAVITY_CONTROLLER_LIBRARY} "${cpp_typesupport_target}")
 pluginlib_export_plugin_description_file(
   controller_interface gravity_compensation_controller.xml)
 
@@ -100,6 +103,7 @@ install(TARGETS ${HARDWARE_LIBRARY} ${GRAVITY_CONTROLLER_LIBRARY}
 )
 install(PROGRAMS
   scripts/mock_stm32_node.py
+  scripts/mock_vla_chunk_publisher.py
   scripts/single_motor_smoke_test.py
   scripts/stm32_state_republisher.py
   DESTINATION lib/${PROJECT_NAME}
