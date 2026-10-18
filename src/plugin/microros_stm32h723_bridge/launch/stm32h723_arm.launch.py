@@ -263,4 +263,14 @@ def generate_launch_description():
             output='screen',
             condition=teleop_inactive,
         ),
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'vla_position_controller', '--inactive',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+            condition=normal_control,
+        ),
     ])
