@@ -63,8 +63,9 @@ the primary VLA path.
 
 ## Activate
 
-YAML registers the controller type; load/switch after bring-up (teleop/
-trajectory must be inactive):
+`stm32h723_arm.launch.py` loads `vla_position_controller` **inactive** on
+normal bring-up (`normal_control`). Activate via `switch_controllers`
+(teleop/trajectory must be inactive); no separate `load_controller` needed:
 
 ```bash
 # Example after stm32h723_arm.launch.py with teleop already running:
@@ -72,13 +73,6 @@ ros2 control switch_controllers \
   --deactivate arm_teleop_controller \
   --activate vla_position_controller \
   --strict
-```
-
-If the controller is not yet loaded:
-
-```bash
-ros2 control load_controller vla_position_controller
-ros2 control set_controller_state vla_position_controller active
 ```
 
 Keep gravity on if desired:

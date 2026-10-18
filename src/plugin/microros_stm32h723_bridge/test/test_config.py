@@ -43,7 +43,7 @@ def test_state_only_launch_uses_read_only_republisher():
     assert "default_value='false'" in launch_source
     assert "executable='stm32_state_republisher.py'" in launch_source
     assert 'condition=IfCondition(state_only)' in launch_source
-    assert launch_source.count('condition=normal_control') == 2
+    assert launch_source.count('condition=normal_control') == 3
     assert "'position_controller'" in launch_source
     assert "'enable_gravity_controller'" in launch_source
     assert "'enable_joint4_calibration'" in launch_source
@@ -57,6 +57,7 @@ def test_state_only_launch_uses_read_only_republisher():
     assert "'inactive': ['Stm32H723ArmSystem']" in launch_source
     assert 'gravity_compensation_controller' in launch_source
     assert 'joint4_calibration_controller' in launch_source
+    assert "'vla_position_controller', '--inactive'" in launch_source
 
     cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
     assert 'scripts/stm32_state_republisher.py' in cmake_source
