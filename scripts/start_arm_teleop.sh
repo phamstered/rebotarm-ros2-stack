@@ -410,7 +410,7 @@ safe_stop_ros2_control() {
     stop_deadline=$((SECONDS + 10))
     while (( SECONDS < stop_deadline )); do
         status_sample="$(
-            timeout 3 ros2 topic echo /stm32/status --once 2>/dev/null || true
+            timeout 3 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon 2>/dev/null || true
         )"
         status_mode="$(awk '/^mode:/ {print $2; exit}' <<<"$status_sample")"
         if [[ "$status_mode" == "3" ]]; then
@@ -804,15 +804,24 @@ stage "Micro-ROS bridge command and acknowledgement"
 check_topic_once /stm32/joint_commands "$RELAY_START_TIMEOUT"
 pass "MicroRosSystem is publishing /stm32/joint_commands."
 
-stm32_command_info="$(
-    timeout 10 ros2 topic info /stm32/joint_commands 2>/dev/null || true
-)"
-stm32_subscription_count="$(
-    awk -F': ' '/^Subscription count:/ {print $2; exit}' <<<"$stm32_command_info"
-)"
+subscriber_deadline=$((SECONDS + RELAY_START_TIMEOUT))
+stm32_command_info=""
+stm32_subscription_count="0"
+while (( SECONDS < subscriber_deadline )); do
+    stm32_command_info="$(
+        timeout 5 ros2 topic info /stm32/joint_commands --no-daemon --spin-time 1 2>/dev/null || true
+    )"
+    stm32_subscription_count="$(
+        awk -F': ' '/^Subscription count:/ {print $2; exit}' <<<"$stm32_command_info"
+    )"
+    if [[ "$stm32_subscription_count" =~ ^[1-9][0-9]*$ ]]; then
+        break
+    fi
+    sleep 0.5
+done
 if [[ ! "$stm32_subscription_count" =~ ^[1-9][0-9]*$ ]]; then
     echo "$stm32_command_info" >&2
-    echo "ERROR: /stm32/joint_commands has no STM32/micro-ROS subscriber." >&2
+    echo "ERROR: /stm32/joint_commands has no STM32/micro-ROS subscriber after discovery timeout." >&2
     exit 1
 fi
 pass "/stm32/joint_commands has $stm32_subscription_count subscriber(s)."
@@ -821,7 +830,7 @@ ack_deadline=$((SECONDS + STM32_STATE_TIMEOUT))
 last_command_sequence="0"
 while (( SECONDS < ack_deadline )); do
     stm32_status_sample="$(
-        timeout 5 ros2 topic echo /stm32/status --once 2>/dev/null || true
+        timeout 5 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon 2>/dev/null || true
     )"
     last_command_sequence="$(
         awk '/^last_command_sequence:/ {print $2; exit}' <<<"$stm32_status_sample"

@@ -204,6 +204,11 @@ relay output, `/stm32/joint_commands`, and the STM32 command-sequence
 acknowledgement. The script prints an end-to-end path summary only after every
 stage passes.
 
+The command-subscriber gate uses direct discovery (`--no-daemon`) with bounded
+retries after daemon restart. A missing subscriber still blocks startup. Status
+acknowledgements use the explicit HardwareStatus message type and direct reads,
+so a temporarily empty daemon type cache cannot be mistaken for missing firmware.
+
 Leader initialization may take longer than 30 seconds, so its default timeout
 is 90 seconds. Child launches run in dedicated process groups for reliable
 cleanup. Before stopping an active ros2_control process, the helper requests
