@@ -72,24 +72,32 @@ the primary VLA path.
 normal bring-up (`normal_control`). Activate via `switch_controllers`
 (teleop/trajectory must be inactive); no separate `load_controller` needed:
 
+Use a single atomic `--strict` switch (deactivate + activate happen in the
+same control cycle, so the position interfaces are never left unclaimed, and
+gravity stays active):
+
 ```bash
 # Example after stm32h723_arm.launch.py with teleop already running:
 ros2 control switch_controllers \
-  --deactivate arm_teleop_controller \
   --activate vla_position_controller \
+  --deactivate arm_teleop_controller \
   --strict
 ```
 
-Keep gravity on if desired:
+Humble `--strict` rejects the whole request if any controller in
+`--deactivate` is not active, or any controller in `--activate` is already
+active. So list only the one position controller that is currently active
+(teleop **or** trajectory), and add `gravity_compensation_controller` to
+`--activate` only if it is actually inactive. Strict checks controller states
+only: if you forget an active position controller, VLA activation fails with
+`Resource conflict ... already claimed`, so check `ros2 control list_controllers`
+afterwards.
 
-```bash
-ros2 control switch_controllers --activate gravity_compensation_controller
-```
-
-With `--strict`, every controller in `--deactivate` must currently be active;
-list only the active one (teleop **or** trajectory). If the controller is not
-loaded (e.g. gravity-tuning launch path), use
+If the controller is not loaded (e.g. gravity-tuning launch path), use
 `ros2 control load_controller --set-state inactive vla_position_controller`.
+
+See [VLA 使用指南](./vla-usage) for the full procedure and the desk one-click
+script caveat.
 
 ## Mock publisher
 
