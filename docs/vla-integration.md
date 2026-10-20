@@ -1,5 +1,8 @@
 # VLA integration (scheme B)
 
+> 实操步骤（启动/切换、假源联调、Python 接入样例、安全清单、FAQ）见 **[VLA 使用指南](./vla-usage)**。
+> Firmware-side constraints: [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md).
+
 Vision-Language-Action (VLA) inference drives the arm through ros2_control
 **position** interfaces, not by writing `/stm32/joint_commands` directly.
 
@@ -56,9 +59,11 @@ Topic: **`/vla/joint_chunk`** (parameter `chunk_topic`).
 | `command_timeout_sec` | `0.2` | Hold last command if no fresh chunk |
 | `max_delta_per_sec` | `1.0` | Per-joint rate limit (rad/s) |
 
-On chunk timeout or rejected NaN input the controller **holds the last valid
-command positions**. Upper layer / firmware mode should remain **HOLD** while
-inference is stale. Do not treat a direct write to `/stm32/joint_commands` as
+On chunk timeout or rejected NaN input the controller **holds the last
+commanded (rate-limited) positions**. Note: MicroRosSystem keeps sending
+`MODE_TRACK` hold frames at 100 Hz; nothing switches the host to `MODE_HOLD`
+automatically (the controller log line is advisory). Firmware HOLD only
+triggers if commands stop entirely (100 ms). Do not treat a direct write to `/stm32/joint_commands` as
 the primary VLA path.
 
 ## Activate
@@ -80,6 +85,11 @@ Keep gravity on if desired:
 ```bash
 ros2 control switch_controllers --activate gravity_compensation_controller
 ```
+
+With `--strict`, every controller in `--deactivate` must currently be active;
+list only the active one (teleop **or** trajectory). If the controller is not
+loaded (e.g. gravity-tuning launch path), use
+`ros2 control load_controller --set-state inactive vla_position_controller`.
 
 ## Mock publisher
 
