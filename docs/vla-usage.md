@@ -129,17 +129,30 @@ ros2 control switch_controllers \
   --strict
 ```
 
-::: warning `--strict` 与 inactive 控制器
-Humble 的 `--strict` 下，`--deactivate` 列表里只要有一个**本来就不是 active** 的控制器，整个切换就会失败。所以 strict 模式下只写当前真正 active 的那一个；如果不确定，可去掉 `--strict` 同时写两个
-（`--deactivate arm_teleop_controller arm_trajectory_controller`，非 strict 会忽略未激活的那个），但随后务必 `list_controllers` 确认。
+::: warning 始终使用 `--strict`，并按实际状态列控制器
+推荐写法：
+
+```bash
+ros2 control switch_controllers \
+  --activate vla_position_controller \
+  --deactivate <当前 active 的 position 控制器> \
+  --strict
+```
+
+- 同一条命令里 deactivate + activate 在同一个控制周期内完成，position 接口不会出现无人占用的空档；重力补偿（effort）不受影响、保持 active。
+- Humble 的 `--strict` 下，只要 `--deactivate` 里有**本来就不是 active** 的控制器，或 `--activate` 里有**已经 active** 的控制器，整个请求就被拒绝、什么都不切换。所以：`--deactivate` 只写当前真正 active 的那**一个**（teleop **或** trajectory，先 `ros2 control list_controllers` 确认）；只有当 `gravity_compensation_controller` 确实是 inactive 时才把它加到 `--activate`。
+- 注意 strict 只检查控制器**状态**；如果漏写了仍 active 的 position 控制器，请求本身可能返回成功，但 VLA 激活会因 `Resource conflict ... already claimed` 失败，切换后务必 `list_controllers` 确认。
 :::
 
 激活瞬间控制器读取当前关节位置作为目标并**原地保持**，直到收到第一条 chunk（日志：`holding current joint positions until a chunk arrives`）。
 
-如重力补偿未开启，可单独激活（不影响 position 接口）：
+如重力补偿当前是 inactive，可在同一条命令里一并激活（若已 active 则**不要**写，否则 strict 会拒绝整个请求）：
 
 ```bash
-ros2 control switch_controllers --activate gravity_compensation_controller --strict
+ros2 control switch_controllers \
+  --activate vla_position_controller gravity_compensation_controller \
+  --deactivate arm_trajectory_controller \
+  --strict
 ```
 
 ### 3. 停止 / 切回
@@ -288,7 +301,7 @@ if __name__ == '__main__':
 
 **ROS 侧（本仓库代码的实际行为）**
 
-- **互斥**：同一时间只能有一个 position 控制器（`vla_position_controller` / `arm_teleop_controller` / `arm_trajectory_controller`）active；`switch_controllers --strict` 会拒绝资源冲突。
+- **互斥**：同一时间只能有一个 position 控制器（`vla_position_controller` / `arm_teleop_controller` / `arm_trajectory_controller`）active；请用单条 `switch_controllers ... --strict` 完成 deactivate + activate（见上文）。
 - **超时**：超过有效超时（消息 `timeout_sec` 或 `command_timeout_sec`=0.2 s）没有新 chunk，控制器**保持最后一次已输出的位置**（不是最后的目标，而是限速后实际走到的位置），只打印一次 `VlaJointChunk timed out` 警告。新 chunk 到来后从该位置继续限速逼近。
 - **超时期间仍是 TRACK**：`MicroRosSystem` 继续以 100 Hz 发送 `mode=TRACK` 的保持帧（重力补偿若 active 也照常叠加）。控制器日志里提到的 “Upper layer should keep MODE_HOLD” 只是提示，**代码不会主动切换到 HOLD**。
 - **NaN / 长度错误**：整条 chunk 被丢弃，等同于没收到，最终同样走超时保持。
@@ -318,14 +331,38 @@ desk 侧操作详见 **[rebotarm-debug-desk · VLA 使用指南](https://phamste
 - Status 页 VLA 卡片的一键启停，本质上就是上面的 `switch_controllers` 调用（重力补偿保持不变）。
 - Monitor 页的 “+VLA” 预设用于同时观察 `/vla/joint_chunk` 与 `/stm32/*` 话题。
 
-::: warning 与 desk 一键启动脚本的配合（未经实机验证）
-如果 Teleop/Trajectory 与 ros2_control 是由 desk 的一键脚本**一起**拉起的，在 desk 里停止它以切换 VLA 时，可能会把 ros2_control 一并关掉。目前建议：在 Jetson 终端手动运行
+::: danger 不要在 desk 一键 Teleop/Trajectory 拉起 ros2_control 时点 desk “Start VLA”
+在 desk 修复之前：如果 ros2_control 是由 desk 的一键 Teleop/Trajectory（即 `start_arm_teleop.sh`）**拉起的**，**不要**点 desk 的 “Start VLA”。它会先停止该脚本，而**停止脚本会把 ros2_control 一起关掉**。
+
+`scripts/start_arm_teleop.sh` 的实际退出流程（`trap cleanup EXIT INT TERM`）：仅当 ros2_control 是**本脚本启动的**时，`cleanup` 才会：
+
+1. 调用 `/microros_stm32h723_hardware/safe_stop`（`timeout 8`）→ `MicroRosSystem` 进入 RETURN，约 3 s（`return_duration_ms`）内把各关节插值回 **零位**，到位（`zero_tolerance` 0.03）后 DISABLE；
+2. 每秒查一次 `/stm32/status`，**最多等 10 s** 等待 `mode == 3`（DISABLE）；
+3. 再停掉 ros2_control 进程组（SIGINT，约 3 s 后 SIGTERM，再 1 s 后 SIGKILL）及残留的 launch / `ros2_control_node` / `robot_state_publisher`。
+
+desk 停止脚本时先发 SIGINT、约 5 s 后再发 SIGTERM。按目前的代码阅读（**未经实机验证**），可能出现两种结果：
+
+- **意外回零并下电**：safe_stop 跑完，臂回到零位后 DISABLE，ros2_control 退出，VLA 无从激活；
+- **safe_stop 被打断**：SIGTERM 在 cleanup 中途到达时脚本直接退出（cleanup 开头已解除 trap）。若 ros2_control 随之退出，`/stm32/joint_commands` 停发 → 固件 100 ms 后 **HOLD**（effort = 0，无重力补偿，重关节可能下垂）→ 500 ms 后锁存 **fault 11**，之后拒绝所有新命令，只能安全回零并**重启 MCU** 恢复。（ros2_control 由 `setsid` 启动、位于独立进程组，脚本被杀后它是否同时退出取决于 desk 的信号发送方式。）
+
+固件侧细节见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)。
+
+**推荐做法**：在 Jetson 终端手动启动
 
 ```bash
 ./scripts/start_arm_teleop.sh --position-controller=trajectory --gravity=true
 ```
 
-再（命令行或 desk VLA 卡片）切换到 `vla_position_controller`。
+然后用**一条** strict 切换进入 VLA（position 接口无空档、重力补偿保持 active）：
+
+```bash
+ros2 control switch_controllers \
+  --activate vla_position_controller \
+  --deactivate arm_trajectory_controller \
+  --strict
+```
+
+desk 侧的修复（改为只做 `switch_controllers`、不停脚本）正在进行中。
 :::
 
 ::: tip Monitor 解码 VlaJointChunk
@@ -338,7 +375,7 @@ Monitor 要解码 `VlaJointChunk`，desk Bridge 的运行环境必须 source 本
 |------|---------|------|
 | `switch_controllers` 失败：controller not found / not loaded | 走了重力整定路径（`position_controller:=none` + gravity/标定）或 `state_only`，launch 未加载 VLA | 用常规路径重启，或 `ros2 control load_controller --set-state inactive vla_position_controller` |
 | 切换后 VLA 未 active，日志 `Resource conflict ... already claimed` | teleop / trajectory 仍 active，position 接口被占用 | 在同一条命令里 `--deactivate` 当前 active 的 position 控制器 |
-| `switch_controllers --strict` 失败：can not be deactivated since it is not active | `--deactivate` 列表里有本就 inactive 的控制器 | 只列真正 active 的，或去掉 `--strict` |
+| `switch_controllers --strict` 失败：`can not be deactivated since it is not active` / `since it is already active` | `--deactivate` 里有本就 inactive 的控制器，或 `--activate` 里有已 active 的（如重力补偿） | 先 `list_controllers`，按实际状态只列需要变化的控制器，保留 `--strict` |
 | `ros2 topic hz /vla/joint_chunk` 没数据 | 外机没装/没 source 含 `VlaJointChunk` 的包；`ROS_DOMAIN_ID` 不同；DDS 不可达 | 外机 `ros2 interface show microros_stm32h723_bridge/msg/VlaJointChunk`；核对 domain；外机能否看到 `/stm32/joint_states` |
 | chunk 有 Hz，臂不动 | `vla_position_controller` 未 active；teleop/trajectory 仍占接口；消息长度≠6 或含 NaN（看控制器日志） | `list_controllers`；看 `Ignoring VlaJointChunk` 警告 |
 | 臂“走一下停一下” | 推理频率 < 5 Hz 导致频繁超时 | 提高推理频率，或适当增大 `timeout_sec` |
