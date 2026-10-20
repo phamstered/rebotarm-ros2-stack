@@ -52,21 +52,23 @@ def test_missing_subscriber_still_blocks_startup_after_bounded_wait(tmp_path):
     assert 'discovery timeout' in result.stderr
 
 
-@pytest.mark.parametrize('safe_stop_accepts', [True, False])
-def test_signal_cleanup_reaps_owned_groups_only_after_safe_stop(tmp_path, safe_stop_accepts):
+@pytest.mark.parametrize('safe_stop_mode', ['accepted', 'rejected', 'no_controller'])
+def test_signal_cleanup_reaps_owned_groups_only_after_safe_stop(tmp_path, safe_stop_mode):
     source = SCRIPT.read_text()
-    functions = 'stop_matching_processes() {' + source.split(
-        'stop_matching_processes() {', 1)[1].split(
+    functions = 'safe_stop_ros2_control() {' + source.split(
+        'safe_stop_ros2_control() {', 1)[1].split(
             'stage "ROS environment', 1)[0]
     # Model ROS launchers that terminate with SIGINT status while the shell is
     # waiting for the same relay process. No ROS topics or production PIDs.
     child = shlex.quote(sys.executable) + ' -c ' + shlex.quote(
         'import signal,sys,time; '
         'signal.signal(signal.SIGINT, lambda *_: sys.exit(130)); time.sleep(60)')
+    safe_stop_mock = '' if safe_stop_mode == 'no_controller' else (
+        f'safe_stop_ros2_control() {{ return {0 if safe_stop_mode == "accepted" else 1}; }}\n')
     script = tmp_path / 'supervisor.sh'
     script.write_text('set -euxo pipefail\n' + functions + '''
 pgrep() { return 1; }
-''' + f'safe_stop_ros2_control() {{ return {0 if safe_stop_accepts else 1}; }}\n' + '\n'.join(f'setsid {child} & {name}=$!' for name in (
+''' + safe_stop_mock + '\n'.join(f'setsid {child} & {name}=$!' for name in (
         'RELAY_PID', 'LEADER_PID', 'CONTROLLER_PID')) + '''
 printf '%s %s %s' "$RELAY_PID" "$LEADER_PID" "$CONTROLLER_PID" > "$1/children"
 wait "$RELAY_PID"
@@ -91,7 +93,7 @@ wait "$RELAY_PID"
                     survivors.append(pid)
                 except ProcessLookupError:
                     pass
-            if safe_stop_accepts:
+            if safe_stop_mode != 'rejected':
                 assert not survivors, (tmp_path / 'trace').read_text()
             else:
                 assert len(survivors) == 3, (tmp_path / 'trace').read_text()

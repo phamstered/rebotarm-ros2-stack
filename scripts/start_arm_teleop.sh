@@ -393,7 +393,7 @@ safe_stop_ros2_control() {
     local status_mode=""
 
     if ! pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
-        return
+        return 0
     fi
 
     response="$(
@@ -415,7 +415,7 @@ safe_stop_ros2_control() {
         status_mode="$(awk '/^mode:/ {print $2; exit}' <<<"$status_sample")"
         if [[ "$status_mode" == "3" ]]; then
             pass "STM32 confirmed MODE_DISABLE before ros2_control shutdown."
-            return
+            return 0
         fi
         sleep 1
     done
@@ -428,14 +428,14 @@ stop_matching_processes() {
     local pattern="$2"
 
     if ! pgrep -f -- "$pattern" >/dev/null 2>&1; then
-        return
+        return 0
     fi
 
     echo "Stopping stale $description process(es)."
     pkill -INT -f -- "$pattern" 2>/dev/null || true
     for _ in {1..20}; do
         if ! pgrep -f -- "$pattern" >/dev/null 2>&1; then
-            return
+            return 0
         fi
         sleep 0.1
     done
@@ -454,7 +454,7 @@ stop_process_group() {
 
     if [[ -z "$group_leader_pid" ]] || \
         ! kill -0 -- "-$group_leader_pid" 2>/dev/null; then
-        return
+        return 0
     fi
 
     echo "Stopping $description process group (PGID $group_leader_pid)."
@@ -462,7 +462,7 @@ stop_process_group() {
     for _ in {1..30}; do
         if ! kill -0 -- "-$group_leader_pid" 2>/dev/null; then
             wait "$group_leader_pid" 2>/dev/null || true
-            return
+            return 0
         fi
         sleep 0.1
     done
