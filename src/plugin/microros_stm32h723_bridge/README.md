@@ -120,6 +120,20 @@ ros2 service call /microros_stm32h723_hardware/safe_stop std_srvs/srv/Trigger '{
 ros2 topic echo /stm32/status
 ```
 
+The RETURN path keeps its zero-position tolerance and can remain pending if a
+joint cannot reach zero. For an arm that is physically supported on site, an
+explicit output release is available (the arm and gripper lose motor output):
+
+```bash
+ros2 service call /microros_stm32h723_hardware/disable std_srvs/srv/Trigger '{}'
+```
+
+Both paths must be followed by a fresh `MODE_DISABLE`, fault-free HardwareStatus
+before terminating the publisher. DISABLE stays latched until hardware
+reactivation, emits zero control fields and a fresh sequence on every frame.
+Firmware fault latches are never cleared by these services. A stop timeout must
+preserve the publisher and report the unconfirmed state.
+
 ## Single-motor bring-up
 
 For the first hardware test, configure firmware with `active_joint_mask=0x01` and connect only `joint1`. Do not launch the seven-joint hardware plugin; run the restricted topic-level test instead:
