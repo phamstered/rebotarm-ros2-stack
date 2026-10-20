@@ -340,12 +340,16 @@ desk 侧操作详见 **[rebotarm-debug-desk · VLA 使用指南](https://phamste
 2. 每秒查一次 `/stm32/status`，**最多等 10 s** 等待 `mode == 3`（DISABLE）；
 3. 再停掉 ros2_control 进程组（SIGINT，约 3 s 后 SIGTERM，再 1 s 后 SIGKILL）及残留的 launch / `ros2_control_node` / `robot_state_publisher`。
 
-desk 停止脚本时先发 SIGINT、约 5 s 后再发 SIGTERM。按目前的代码阅读（**未经实机验证**），可能出现两种结果：
+desk 停止脚本的方式是 `kill -INT -$pid`，约 5 s 后 `kill -TERM -$pid`（发给脚本所在**进程组**）。ros2_control 由脚本用 `setsid` 启动、位于独立会话，**不会**直接收到 desk 的信号，只会被脚本的 `cleanup` 停掉。按目前的代码阅读（**未经实机验证**），可能出现两种结果：
 
-- **意外回零并下电**：safe_stop 跑完，臂回到零位后 DISABLE，ros2_control 退出，VLA 无从激活；
-- **safe_stop 被打断**：SIGTERM 在 cleanup 中途到达时脚本直接退出（cleanup 开头已解除 trap）。若 ros2_control 随之退出，`/stm32/joint_commands` 停发 → 固件 100 ms 后 **HOLD**（effort = 0，无重力补偿，重关节可能下垂）→ 500 ms 后锁存 **fault 11**，之后拒绝所有新命令，只能安全回零并**重启 MCU** 恢复。（ros2_control 由 `setsid` 启动、位于独立进程组，脚本被杀后它是否同时退出取决于 desk 的信号发送方式。）
+- **结果 A：safe_stop 跑完** → 臂**意外回到零位并 DISABLE**。如果随后的 ros2_control 停止也在 SIGTERM 前完成，controller manager 已不存在，`switch_controllers` 直接失败；如果停止过程被 SIGTERM 打断，则同结果 B。
+- **结果 B：cleanup 在 safe_stop 途中被杀**（cleanup 开头已解除 trap，SIGTERM 直接结束脚本）→ ros2_control **可能仍在运行**，但硬件卡在回零半途（RETURN）或已 DISABLE；此时 `switch_controllers` 可能返回成功，臂却不动。若 ros2_control 也已退出，`/stm32/joint_commands` 停发 → 固件 100 ms 后 **HOLD**（effort = 0，无重力补偿，重关节可能下垂）→ 500 ms 后锁存 **fault 11**，之后拒绝所有新命令（见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)）。
 
-固件侧细节见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)。
+**如果已经点了**，按顺序排查：
+
+1. `ros2 topic echo /stm32/status --once`：看 `mode`（3 = DISABLE）与 `fault_code`（11 = 命令丢失锁存）；
+2. `ros2 control list_controllers`：controller manager 是否还在、`vla_position_controller` 是否 active；
+3. 若已 DISABLE 或出现 fault 11：先安全回零，再**重启 MCU**，然后按下面的手动路径重新启动。
 
 **推荐做法**：在 Jetson 终端手动启动
 
@@ -362,7 +366,7 @@ ros2 control switch_controllers \
   --strict
 ```
 
-desk 侧的修复（改为只做 `switch_controllers`、不停脚本）正在进行中。
+desk 侧修复正在进行中：当脚本拥有 ros2_control 时，desk 不再停止脚本；无法判断时拒绝操作；切换后校验 `vla_position_controller` 确为 active。
 :::
 
 ::: tip Monitor 解码 VlaJointChunk
