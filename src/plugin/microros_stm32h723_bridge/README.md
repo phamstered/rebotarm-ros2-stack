@@ -214,6 +214,9 @@ is 90 seconds. Child launches run in dedicated process groups for reliable
 cleanup. Before stopping an active ros2_control process, the helper requests
 the hardware safe-stop service and waits for STM32 `MODE_DISABLE`; this avoids
 triggering the firmware's latched command-loss fault during normal shutdown.
+Cleanup preserves command processes if safe stop is rejected or unconfirmed.
+Once acknowledged, child SIGINT/exit status 130 cannot interrupt the remaining
+cleanup: relay, leader driver and controller groups are all reaped.
 The bring-up host feedback timeout is 500 ms to tolerate occasional
 micro-ROS serial/DDS scheduling gaps; the STM32 firmware retains its faster CAN
 feedback and command-loss safety checks.

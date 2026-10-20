@@ -403,7 +403,7 @@ safe_stop_ros2_control() {
     )"
     if ! grep -Eq 'success=(True|true)|success:[[:space:]]*true' <<<"$response"; then
         echo "WARNING: Hardware safe-stop was unavailable or rejected." >&2
-        return
+        return 1
     fi
 
     echo "Waiting for STM32 MODE_DISABLE confirmation."
@@ -420,6 +420,7 @@ safe_stop_ros2_control() {
         sleep 1
     done
     echo "WARNING: STM32 did not confirm MODE_DISABLE before cleanup." >&2
+    return 1
 }
 
 stop_matching_processes() {
@@ -476,7 +477,16 @@ stop_process_group() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
+    trap - EXIT
+    # wait() may propagate a child's SIGINT to this shell. Keep it ignored
+    # throughout cleanup so a relay exit cannot skip the leader/controller.
+    trap '' INT TERM
+    # A relay that exits with status 130 must not abort the remaining cleanup.
+    set +e
+    if [[ -n "$CONTROLLER_PID" ]] && ! safe_stop_ros2_control; then
+        echo "ERROR: Refusing cleanup without DISABLE confirmation; command processes are preserved." >&2
+        return 1
+    fi
     if [[ -n "$RELAY_PID" ]]; then
         echo "Stopping teleoperation relay started by this script."
         stop_process_group "teleoperation relay" "$RELAY_PID"
@@ -493,7 +503,6 @@ cleanup() {
     fi
     if [[ -n "$CONTROLLER_PID" ]]; then
         echo "Stopping ros2_control launch started by this script."
-        safe_stop_ros2_control
         stop_process_group "arm ros2_control" "$CONTROLLER_PID"
         stop_matching_processes \
             "arm ros2_control launch" \
