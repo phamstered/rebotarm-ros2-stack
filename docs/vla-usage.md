@@ -7,7 +7,7 @@ VLA 节点只发布 `/vla/joint_chunk`（`VlaJointChunk`，6 个关节角，rad�
 :::
 
 固件侧约束（MIT 字段校验、`COMMAND_TIMEOUT_MS`、fault 码）以 rebotarm-executor 的
-[docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)（[PR #9](https://github.com/phamstered/rebotarm-executor/pull/9)）为准，本页只摘要与 ROS 侧相关的部分。
+[docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md) 为准，本页只摘要与 ROS 侧相关的部分。
 
 ## 架构
 
@@ -313,7 +313,24 @@ if __name__ == '__main__':
 
 ## 与 rebotarm-debug-desk 配合
 
-rebotarm-debug-desk 的 Status 页 VLA 卡片的一键启停，本质上就是上面的 `switch_controllers` 调用（重力补偿保持不变）；Monitor 页的 “+VLA” 预设用于同时观察 `/vla/joint_chunk` 与 `/stm32/*` 话题。desk 侧的详细使用指南正在编写中，发布后会在此补充链接。
+desk 侧操作详见 **[rebotarm-debug-desk · VLA 使用指南](https://phamstered.github.io/rebotarm-debug-desk/vla)**（源文件 [docs/vla.md](https://github.com/phamstered/rebotarm-debug-desk/blob/main/docs/vla.md)；草稿中：[PR #102](https://github.com/phamstered/rebotarm-debug-desk/pull/102)，合并前以 PR 内容为准）。概要：
+
+- Status 页 VLA 卡片的一键启停，本质上就是上面的 `switch_controllers` 调用（重力补偿保持不变）。
+- Monitor 页的 “+VLA” 预设用于同时观察 `/vla/joint_chunk` 与 `/stm32/*` 话题。
+
+::: warning 与 desk 一键启动脚本的配合（未经实机验证）
+如果 Teleop/Trajectory 与 ros2_control 是由 desk 的一键脚本**一起**拉起的，在 desk 里停止它以切换 VLA 时，可能会把 ros2_control 一并关掉。目前建议：在 Jetson 终端手动运行
+
+```bash
+./scripts/start_arm_teleop.sh --position-controller=trajectory --gravity=true
+```
+
+再（命令行或 desk VLA 卡片）切换到 `vla_position_controller`。
+:::
+
+::: tip Monitor 解码 VlaJointChunk
+Monitor 要解码 `VlaJointChunk`，desk Bridge 的运行环境必须 source 本仓库含该消息的 `microros_stm32h723_bridge` 包；否则 `/vla/joint_chunk` 的 Hz / 曲线为空，但 VLA 启停（`switch_controllers`）仍可正常使用。
+:::
 
 ## 常见问题
 
