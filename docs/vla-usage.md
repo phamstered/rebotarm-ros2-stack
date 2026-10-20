@@ -310,7 +310,7 @@ if __name__ == '__main__':
 
 **固件侧（摘要，详见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)）**
 
-- 固件 100 ms 无合法 `JointCommand` → HOLD。只有 ros2_control / Agent / USB 链路**整体停发**时才会触发；VLA 推理慢**不会**触发（控制器仍在发保持帧）。
+- 固件在 **TRACK** 下 100 ms 无合法 `JointCommand` → HOLD（`User/motor_bridge.c` 只对 TRACK 做这一步；RETURN 下没有 100 ms HOLD，直接走 500 ms 锁存）。只有 ros2_control / Agent / USB 链路**整体停发**时才会触发；VLA 推理慢**不会**触发（控制器仍在发保持帧）。
 - 500 ms 无命令 → 锁存 **fault 11（CMD_LOSS）**，之后拒绝所有命令，**只能重启固件恢复**。
 - 任一关节 `|effort| > 10 Nm` → 固件**拒收整帧**（fault 3），不是钳位；kp/kd 必须 ≥ 0。
 - 固件 HOLD 下 effort = 0、**无重力补偿**，长时间 HOLD 时重关节（joint2/3）可能下垂。
@@ -336,20 +336,41 @@ desk 侧操作详见 **[rebotarm-debug-desk · VLA 使用指南](https://phamste
 
 `scripts/start_arm_teleop.sh` 的实际退出流程（`trap cleanup EXIT INT TERM`）：仅当 ros2_control 是**本脚本启动的**时，`cleanup` 才会：
 
-1. 调用 `/microros_stm32h723_hardware/safe_stop`（`timeout 8`）→ `MicroRosSystem` 进入 RETURN，约 3 s（`return_duration_ms`）内把各关节插值回 **零位**，到位（`zero_tolerance` 0.03）后 DISABLE；
+1. 调用 `/microros_stm32h723_hardware/safe_stop`（`timeout 8`）→ `MicroRosSystem` 进入 RETURN，约 3 s（`return_duration_ms`）内把各关节插值回 **零位**，到位（`zero_tolerance` 0.03）后发 DISABLE（RETURN kp ≠ 0 的增益下不会稳定停在 DISABLE，见下）；
 2. 每秒查一次 `/stm32/status`，**最多等 10 s** 等待 `mode == 3`（DISABLE）；
 3. 再停掉 ros2_control 进程组（SIGINT，约 3 s 后 SIGTERM，再 1 s 后 SIGKILL）及残留的 launch / `ros2_control_node` / `robot_state_publisher`。
 
 desk 停止脚本的方式是 `kill -INT -$pid`，约 5 s 后 `kill -TERM -$pid`（发给脚本所在**进程组**）。ros2_control 由脚本用 `setsid` 启动、位于独立会话，**不会**直接收到 desk 的信号，只会被脚本的 `cleanup` 停掉。按目前的代码阅读（**未经实机验证**），可能出现两种结果：
 
-- **结果 A：safe_stop 跑完** → 臂**意外回到零位并 DISABLE**。如果随后的 ros2_control 停止也在 SIGTERM 前完成，controller manager 已不存在，`switch_controllers` 直接失败；如果停止过程被 SIGTERM 打断，则同结果 B。
-- **结果 B：cleanup 在 safe_stop 途中被杀**（cleanup 开头已解除 trap，SIGTERM 直接结束脚本）→ ros2_control **可能仍在运行**，但硬件卡在回零半途（RETURN）或已 DISABLE；此时 `switch_controllers` 可能返回成功，臂却不动。若 ros2_control 也已退出，`/stm32/joint_commands` 停发 → 固件 100 ms 后 **HOLD**（effort = 0，无重力补偿，重关节可能下垂）→ 500 ms 后锁存 **fault 11**，之后拒绝所有新命令（见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)）。
+关键点（代码阅读）：`safe_stop` 在 `MicroRosSystem` 里是一个**锁存标志**（`micro_ros_system.cpp:413` 置位，只在 hardware `on_activate` 时清除，`:222`）。服务一旦调用成功，回零由 ros2_control 进程里的 `write()` 执行（`:280-301`），**杀掉脚本并不会打断回零**；只要 ros2_control 还活着，之后所有 position 目标（包括 VLA）都会被回零/DISABLE 逻辑覆盖。因此 `switch_controllers` 可以返回成功、`vla_position_controller` 也显示 active，但**臂不会跟随 VLA**。
+
+可能的结果：
+
+- **结果 A：ros2_control 仍在运行**（cleanup 在 safe_stop 之后、停 ros2_control 之前被 SIGTERM 打断）→ 臂**意外回到零位**，之后 VLA 无效。`/stm32/status` 的表现取决于增益文件：
+  - `gravity_mit_gains.yaml`（RETURN kp 全 0）：每帧都发 DISABLE 且复用同一个 sequence，固件按过期拒收 → **稳定显示 `mode=3`、`fault_code=4`**；DISABLE 下不触发 500 ms 锁存，**不会**出 fault 11。
+  - `arm_mit_gains.yaml` / `arm_gripper_mit_gains.yaml`（RETURN kp ≠ 0，即 VLA 推荐路径用的增益）：发出一帧 DISABLE 后，下一周期 `write()` 会因 `command_mode_ != RETURN` 重新进入 RETURN（`:287-290`），于是**在零位附近以 RETURN 增益保持**，约每 3 s 再发一帧过期的 DISABLE。`/stm32/status` 多数时间显示 `mode=2`、`fault_code=0`，偶尔闪 `fault_code=4`，**很少能看到 `mode=3`**。（疑似 `MicroRosSystem` 的 bug，见下方说明。）
+- **结果 B：ros2_control 已退出**（safe_stop 后 cleanup 完成了进程停止，或进程自行退出）→ `switch_controllers` 直接失败（没有 controller manager）。固件侧：若退出时固件已处于 DISABLE，不会锁存；若处于 RETURN / TRACK（上面第二种增益下几乎总是 RETURN），500 ms 后锁存 **fault 11**，切 HOLD（effort = 0，无重力补偿，重关节可能下垂），之后拒绝所有新命令，只能重启 MCU（见 [rebotarm-executor docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md)）。
 
 **如果已经点了**，按顺序排查：
 
-1. `ros2 topic echo /stm32/status --once`：看 `mode`（3 = DISABLE）与 `fault_code`（11 = 命令丢失锁存）；
-2. `ros2 control list_controllers`：controller manager 是否还在、`vla_position_controller` 是否 active；
-3. 若已 DISABLE 或出现 fault 11：先安全回零，再**重启 MCU**，然后按下面的手动路径重新启动。
+1. `ros2 topic echo /stm32/status --once`（多看几次）：`mode`（2 = RETURN，3 = DISABLE）与 `fault_code`；
+2. `ros2 control list_controllers`：controller manager 是否还在；
+3. 按下表处理，然后按下面的手动路径重新启动：
+
+| 现象 | 含义 | 处理 |
+|------|------|------|
+| `mode=3` + `fault_code=4`，controller manager 在 | safe_stop 已执行，ros2_control 仍在发过期 DISABLE | **重启 MCU 没用**（锁存在 ros2_control 里）。重启 ros2_control（固件处于 DISABLE，停发不会触发 fault 11）；或尝试重新激活硬件（见下） |
+| `mode=2`（偶尔 `fault_code=4`），臂停在零位附近，controller manager 在 | safe_stop 已执行，处于 RETURN 循环 | 同样**重启 MCU 没用**；需要重启 ros2_control。停掉时固件处于 RETURN，预计 500 ms 后锁存 fault 11 → 再按下一行处理 |
+| `fault_code=11` | 命令丢失锁存 | 先把臂安全托回零位，再**重启 MCU**（锁存不会自行清除） |
+
+重新激活硬件（不重启 ros2_control，**未经实机验证**）：Humble 支持 `ros2 control set_hardware_component_state <name> inactive|active`，硬件组件名为 **`Stm32H723ArmSystem`**。`on_activate` 会清除 safe_stop 锁存、把 `disable_sequence_` 归零并从固件上报的 `last_command_sequence` 续号（`micro_ros_system.cpp:220-224`），逻辑上是干净的。但 `on_deactivate` 只有在固件确认 `mode == DISABLE` 且 `last_command_sequence == disable_sequence_` 时才放行（`:233-238`）：`mode=3 + fault 4` 的情况满足，RETURN 循环的情况**不满足**（会被拒绝）。建议先 deactivate 所有 command 控制器再操作：
+
+```bash
+ros2 control switch_controllers --deactivate vla_position_controller gravity_compensation_controller --strict
+ros2 control set_hardware_component_state Stm32H723ArmSystem inactive
+ros2 control set_hardware_component_state Stm32H723ArmSystem active
+ros2 control switch_controllers --activate arm_trajectory_controller gravity_compensation_controller --strict
+```
 
 **推荐做法**：在 Jetson 终端手动启动
 
@@ -386,7 +407,8 @@ Monitor 要解码 `VlaJointChunk`，desk Bridge 的运行环境必须 source 本
 | 臂动得很慢 / 跟不上 | `max_delta_per_sec` 限速（默认 1 rad/s） | 确认安全后在 YAML 中调大并重启 |
 | 某关节到不了目标 | 目标超出 URDF 限位被钳位（如 joint2/3 > 0） | 检查目标范围 |
 | `/stm32/status` fault 3 | 某关节 effort > 10 Nm，整帧被拒 | 检查重力参数 / 增益文件 `effort_limits` |
-| fault 11 | ros2_control 或 Agent 停发 > 500 ms | 只能重启固件；见固件文档 |
+| `mode=3` + fault 4（或 `mode=2` 停在零位不动） | `safe_stop` 已执行且 ros2_control 仍在运行，position 目标被回零逻辑覆盖 | 重启 MCU 无效；重启 ros2_control 或重新激活 `Stm32H723ArmSystem`（见上文 desk 一节） |
+| fault 11 | ros2_control 或 Agent 在非 DISABLE 状态下停发 > 500 ms | 先安全回零，再重启 MCU；见固件文档 |
 
 ## 限制与后续
 
