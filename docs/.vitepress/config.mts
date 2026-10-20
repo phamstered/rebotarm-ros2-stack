@@ -30,6 +30,7 @@ export default defineConfig({
           { text: '构建与运行', link: '/build-run' },
           { text: '控制栈与后端', link: '/controllers' },
           { text: 'VLA 集成 (scheme B)', link: '/vla-integration' },
+          { text: 'VLA 使用指南', link: '/vla-usage' },
         ],
       },
       {
