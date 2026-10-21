@@ -9,6 +9,8 @@ VLA 节点只发布 `/vla/joint_chunk`（`VlaJointChunk`，6 个关节角，rad�
 固件侧约束（MIT 字段校验、`COMMAND_TIMEOUT_MS`、fault 码）以 rebotarm-executor 的
 [docs/vla.md](https://github.com/phamstered/rebotarm-executor/blob/main/docs/vla.md) 为准，本页只摘要与 ROS 侧相关的部分。
 
+遥操 / VLA **数据采集** 的 stamp、`/stm32/status` 与 HOLD/fault 门禁见 [数据采集质量清单](./data-collection)。
+
 ## 架构
 
 ```

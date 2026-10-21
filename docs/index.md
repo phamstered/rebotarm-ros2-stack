@@ -55,6 +55,7 @@ features:
 | Joint4 + camera_link 负载多姿态标定 | `Joint4CalibrationController` |
 | 位置遥操 / 轨迹控制器 + 夹爪 | `arm_teleop_controller`、`arm_trajectory_controller`、`gripper_teleop_controller` |
 | VLA scheme B（chunk → position） | `VlaPositionController` + `/vla/joint_chunk`（见 [VLA 集成](./vla-integration) / [使用指南](./vla-usage)） |
+| 数据采集质量门禁 | `scripts/check_collection_ready.sh` + [数据采集质量](./data-collection) |
 | CAN 侧 MIT 驱动（非 ros2_control 插件） | `rebotarm_hw_driver` |
 | 关节映射中继、domain bridge、夹爪端点校准 | `joint_state_relay` |
 
@@ -66,6 +67,7 @@ features:
 4. [CI 说明](./ci) — GitHub Actions 覆盖范围
 5. [ros2_control 关联机制](./ros2_control_association) — controller ↔ hardware 接口匹配
 6. [一键重力 / 参数辨识（设计）](./gravity-identification) — StartGravityID action 与固件 HOLD 契约
+7. [数据采集质量清单](./data-collection) — stamp 预检、`/stm32/status`、HOLD/fault 11 门禁
 
 ## 本机预览文档
 
