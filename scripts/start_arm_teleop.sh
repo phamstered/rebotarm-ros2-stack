@@ -838,6 +838,20 @@ fi
 check_stm32_status "$stm32_status_sample"
 pass "STM32 acknowledged command sequence $last_command_sequence."
 
+# Soft collection preflight (stamps / TRACK / fault). Hard gate is
+# scripts/check_collection_ready.sh before recording (see docs/data-collection.md).
+collection_check="$WORKSPACE_DIR/scripts/check_collection_ready.sh"
+if [[ -x "$collection_check" ]]; then
+    echo
+    echo "Running collection stamp preflight (--warn-only; desk should hard-gate before record)."
+    "$collection_check" --warn-only \
+        --ros-domain-id="$ROS_DOMAIN_ID" \
+        --timeout="$STM32_STATE_TIMEOUT" \
+        --workspace="$WORKSPACE_DIR" || true
+else
+    echo "[WARN] Missing $collection_check; skip collection stamp preflight."
+fi
+
 echo
 if [[ "$POSITION_CONTROLLER" == "teleop" ]]; then
     echo "End-to-end self-check passed:"

@@ -15,6 +15,7 @@ export default defineConfig({
       { text: '构建与运行', link: '/build-run' },
       { text: '控制栈', link: '/controllers' },
       { text: '重力辨识', link: '/gravity-identification' },
+      { text: '数据采集', link: '/data-collection' },
       { text: 'CI', link: '/ci' },
       {
         text: 'GitHub',
@@ -31,6 +32,7 @@ export default defineConfig({
           { text: '控制栈与后端', link: '/controllers' },
           { text: 'VLA 集成 (scheme B)', link: '/vla-integration' },
           { text: 'VLA 使用指南', link: '/vla-usage' },
+          { text: '数据采集质量', link: '/data-collection' },
         ],
       },
       {
