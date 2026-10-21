@@ -120,6 +120,20 @@ ros2 service call /microros_stm32h723_hardware/safe_stop std_srvs/srv/Trigger '{
 ros2 topic echo /stm32/status
 ```
 
+The RETURN path keeps its zero-position tolerance and can remain pending if a
+joint cannot reach zero. For an arm that is physically supported on site, an
+explicit output release is available (the arm and gripper lose motor output):
+
+```bash
+ros2 service call /microros_stm32h723_hardware/disable std_srvs/srv/Trigger '{}'
+```
+
+Both paths must be followed by a fresh `MODE_DISABLE`, fault-free HardwareStatus
+before terminating the publisher. DISABLE stays latched until hardware
+reactivation, emits zero control fields and a fresh sequence on every frame.
+Firmware fault latches are never cleared by these services. A stop timeout must
+preserve the publisher and report the unconfirmed state.
+
 ## Single-motor bring-up
 
 For the first hardware test, configure firmware with `active_joint_mask=0x01` and connect only `joint1`. Do not launch the seven-joint hardware plugin; run the restricted topic-level test instead:
@@ -190,11 +204,19 @@ relay output, `/stm32/joint_commands`, and the STM32 command-sequence
 acknowledgement. The script prints an end-to-end path summary only after every
 stage passes.
 
+The command-subscriber gate uses direct discovery (`--no-daemon`) with bounded
+retries after daemon restart. A missing subscriber still blocks startup. Status
+acknowledgements use the explicit HardwareStatus message type and direct reads,
+so a temporarily empty daemon type cache cannot be mistaken for missing firmware.
+
 Leader initialization may take longer than 30 seconds, so its default timeout
 is 90 seconds. Child launches run in dedicated process groups for reliable
 cleanup. Before stopping an active ros2_control process, the helper requests
 the hardware safe-stop service and waits for STM32 `MODE_DISABLE`; this avoids
 triggering the firmware's latched command-loss fault during normal shutdown.
+Cleanup preserves command processes if safe stop is rejected or unconfirmed.
+Once acknowledged, child SIGINT/exit status 130 cannot interrupt the remaining
+cleanup: relay, leader driver and controller groups are all reaped.
 The bring-up host feedback timeout is 500 ms to tolerate occasional
 micro-ROS serial/DDS scheduling gaps; the STM32 firmware retains its faster CAN
 feedback and command-loss safety checks.

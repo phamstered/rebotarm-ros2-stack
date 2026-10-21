@@ -147,6 +147,9 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
     safe_stop_service_ = node_->create_service<std_srvs::srv::Trigger>(
       "~/safe_stop",
       std::bind(&MicroRosSystem::request_safe_stop, this, std::placeholders::_1, std::placeholders::_2));
+    disable_service_ = node_->create_service<std_srvs::srv::Trigger>(
+      "~/disable",
+      std::bind(&MicroRosSystem::request_disable, this, std::placeholders::_1, std::placeholders::_2));
     executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
     executor_->add_node(node_);
     executor_thread_ = std::thread([this]() {executor_->spin();});
@@ -220,6 +223,7 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
     sequence_ = status_.last_command_sequence;
   }
   safe_stop_requested_.store(false);
+  disable_requested_.store(false);
   disable_sequence_ = 0;
   command_mode_.store(msg::JointCommand::MODE_HOLD);
   active_.store(true);
@@ -231,7 +235,9 @@ hardware_interface::CallbackReturn MicroRosSystem::on_deactivate(const rclcpp_li
 {
   std::lock_guard<std::mutex> lock(status_mutex_);
   if (disable_sequence_ == 0 || status_.mode != msg::HardwareStatus::MODE_DISABLE ||
-    status_.last_command_sequence != disable_sequence_)
+    status_.fault_code != 0 ||
+    static_cast<int32_t>(status_.last_command_sequence - disable_sequence_) < 0 ||
+    static_cast<int32_t>(sequence_ - status_.last_command_sequence) < 0)
   {
     RCLCPP_ERROR(node_->get_logger(), "Refusing deactivate before STM32 confirms DISABLE");
     return hardware_interface::CallbackReturn::ERROR;
@@ -277,7 +283,10 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
       targets[protocol_index], lower_limits_[protocol_index], upper_limits_[protocol_index]);
   }
 
-  if (safe_stop_requested_.load()) {
+  if (disable_requested_.load() || disable_sequence_ != 0) {
+    // DISABLE remains terminal until on_activate resets this lifecycle.
+    command_mode_.store(msg::JointCommand::MODE_DISABLE);
+  } else if (safe_stop_requested_.load()) {
     const bool return_position_control_enabled = std::any_of(
       configured_protocol_indices_.begin(), configured_protocol_indices_.end(),
       [this](const auto index) {return std::abs(return_gains_.kp[index]) > 1e-9;});
@@ -313,18 +322,17 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
   msg::JointCommand message;
   message.header.stamp = node_->now();
   message.mode = command_mode_.load();
-  if (message.mode == msg::JointCommand::MODE_DISABLE) {
-    if (disable_sequence_ == 0) {
-      disable_sequence_ = ++sequence_;
-    }
-    message.sequence = disable_sequence_;
-  } else {
+  message.sequence = ++sequence_;
+  if (message.sequence == 0) {
     message.sequence = ++sequence_;
+  }
+  if (message.mode == msg::JointCommand::MODE_DISABLE && disable_sequence_ == 0) {
+    disable_sequence_ = message.sequence;
   }
   const auto & gains = selected_gains();
   for (std::size_t i = 0; i < kJointCount; ++i) {
     const bool configured = (configured_joint_mask_ & (1U << i)) != 0U;
-    if (!configured) {
+    if (!configured || message.mode == msg::JointCommand::MODE_DISABLE) {
       message.position[i] = 0.0F;
       message.velocity[i] = 0.0F;
       message.kp[i] = 0.0F;
@@ -413,6 +421,22 @@ void MicroRosSystem::request_safe_stop(
   safe_stop_requested_.store(true);
   response->success = true;
   response->message = "safe return requested; monitor /stm32/status for DISABLE confirmation";
+}
+
+void MicroRosSystem::request_disable(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  if (!active_.load()) {
+    response->success = false;
+    response->message = "hardware is not active";
+    return;
+  }
+  // Explicit release of outputs for an on-site supported arm. This does not
+  // clear firmware faults or relax the safe-return zero-position criteria.
+  disable_requested_.store(true);
+  response->success = true;
+  response->message = "DISABLE requested; support the arm and wait for STM32 acknowledgement";
 }
 
 void MicroRosSystem::stop_executor()

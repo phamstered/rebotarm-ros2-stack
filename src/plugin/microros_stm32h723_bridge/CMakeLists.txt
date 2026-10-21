@@ -111,7 +111,13 @@ install(PROGRAMS
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   ament_add_pytest_test(test_config test/test_config.py)
+  ament_add_pytest_test(test_teleop_checks test/test_teleop_checks.py)
+  ament_add_gtest(test_stop_lifecycle test/test_stop_lifecycle.cpp)
+  target_include_directories(test_stop_lifecycle PRIVATE include)
+  target_link_libraries(test_stop_lifecycle ${HARDWARE_LIBRARY} "${cpp_typesupport_target}")
+  ament_target_dependencies(test_stop_lifecycle hardware_interface rclcpp rclcpp_lifecycle sensor_msgs std_srvs)
 endif()
 
 ament_export_include_directories(include)

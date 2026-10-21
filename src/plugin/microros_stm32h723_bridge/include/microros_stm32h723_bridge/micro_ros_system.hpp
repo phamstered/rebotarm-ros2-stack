@@ -46,6 +46,8 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
+  friend struct MicroRosSystemTestAccess;
+
   struct Feedback
   {
     std::array<double, kJointCount> position{};
@@ -64,6 +66,9 @@ private:
   void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr message);
   void status_callback(const msg::HardwareStatus::SharedPtr message);
   void request_safe_stop(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+  void request_disable(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void stop_executor();
@@ -104,6 +109,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_subscription_;
   rclcpp::Subscription<msg::HardwareStatus>::SharedPtr status_subscription_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr safe_stop_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disable_service_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
   std::thread executor_thread_;
 
@@ -113,6 +119,7 @@ private:
   std::atomic<bool> active_{false};
   std::atomic<bool> required_joints_active_{false};
   std::atomic<bool> safe_stop_requested_{false};
+  std::atomic<bool> disable_requested_{false};
   std::chrono::steady_clock::time_point return_started_at_{};
   std::chrono::milliseconds state_timeout_{100};
   std::chrono::milliseconds activation_timeout_{3000};

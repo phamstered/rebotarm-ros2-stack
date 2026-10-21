@@ -393,7 +393,7 @@ safe_stop_ros2_control() {
     local status_mode=""
 
     if ! pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
-        return
+        return 0
     fi
 
     response="$(
@@ -403,23 +403,24 @@ safe_stop_ros2_control() {
     )"
     if ! grep -Eq 'success=(True|true)|success:[[:space:]]*true' <<<"$response"; then
         echo "WARNING: Hardware safe-stop was unavailable or rejected." >&2
-        return
+        return 1
     fi
 
     echo "Waiting for STM32 MODE_DISABLE confirmation."
     stop_deadline=$((SECONDS + 10))
     while (( SECONDS < stop_deadline )); do
         status_sample="$(
-            timeout 3 ros2 topic echo /stm32/status --once 2>/dev/null || true
+            timeout 3 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon 2>/dev/null || true
         )"
         status_mode="$(awk '/^mode:/ {print $2; exit}' <<<"$status_sample")"
         if [[ "$status_mode" == "3" ]]; then
             pass "STM32 confirmed MODE_DISABLE before ros2_control shutdown."
-            return
+            return 0
         fi
         sleep 1
     done
     echo "WARNING: STM32 did not confirm MODE_DISABLE before cleanup." >&2
+    return 1
 }
 
 stop_matching_processes() {
@@ -427,14 +428,14 @@ stop_matching_processes() {
     local pattern="$2"
 
     if ! pgrep -f -- "$pattern" >/dev/null 2>&1; then
-        return
+        return 0
     fi
 
     echo "Stopping stale $description process(es)."
     pkill -INT -f -- "$pattern" 2>/dev/null || true
     for _ in {1..20}; do
         if ! pgrep -f -- "$pattern" >/dev/null 2>&1; then
-            return
+            return 0
         fi
         sleep 0.1
     done
@@ -453,7 +454,7 @@ stop_process_group() {
 
     if [[ -z "$group_leader_pid" ]] || \
         ! kill -0 -- "-$group_leader_pid" 2>/dev/null; then
-        return
+        return 0
     fi
 
     echo "Stopping $description process group (PGID $group_leader_pid)."
@@ -461,7 +462,7 @@ stop_process_group() {
     for _ in {1..30}; do
         if ! kill -0 -- "-$group_leader_pid" 2>/dev/null; then
             wait "$group_leader_pid" 2>/dev/null || true
-            return
+            return 0
         fi
         sleep 0.1
     done
@@ -476,7 +477,16 @@ stop_process_group() {
 }
 
 cleanup() {
-    trap - EXIT INT TERM
+    trap - EXIT
+    # wait() may propagate a child's SIGINT to this shell. Keep it ignored
+    # throughout cleanup so a relay exit cannot skip the leader/controller.
+    trap '' INT TERM
+    # A relay that exits with status 130 must not abort the remaining cleanup.
+    set +e
+    if [[ -n "$CONTROLLER_PID" ]] && ! safe_stop_ros2_control; then
+        echo "ERROR: Refusing cleanup without DISABLE confirmation; command processes are preserved." >&2
+        return 1
+    fi
     if [[ -n "$RELAY_PID" ]]; then
         echo "Stopping teleoperation relay started by this script."
         stop_process_group "teleoperation relay" "$RELAY_PID"
@@ -493,7 +503,6 @@ cleanup() {
     fi
     if [[ -n "$CONTROLLER_PID" ]]; then
         echo "Stopping ros2_control launch started by this script."
-        safe_stop_ros2_control
         stop_process_group "arm ros2_control" "$CONTROLLER_PID"
         stop_matching_processes \
             "arm ros2_control launch" \
@@ -804,15 +813,24 @@ stage "Micro-ROS bridge command and acknowledgement"
 check_topic_once /stm32/joint_commands "$RELAY_START_TIMEOUT"
 pass "MicroRosSystem is publishing /stm32/joint_commands."
 
-stm32_command_info="$(
-    timeout 10 ros2 topic info /stm32/joint_commands 2>/dev/null || true
-)"
-stm32_subscription_count="$(
-    awk -F': ' '/^Subscription count:/ {print $2; exit}' <<<"$stm32_command_info"
-)"
+subscriber_deadline=$((SECONDS + RELAY_START_TIMEOUT))
+stm32_command_info=""
+stm32_subscription_count="0"
+while (( SECONDS < subscriber_deadline )); do
+    stm32_command_info="$(
+        timeout 5 ros2 topic info /stm32/joint_commands --no-daemon --spin-time 1 2>/dev/null || true
+    )"
+    stm32_subscription_count="$(
+        awk -F': ' '/^Subscription count:/ {print $2; exit}' <<<"$stm32_command_info"
+    )"
+    if [[ "$stm32_subscription_count" =~ ^[1-9][0-9]*$ ]]; then
+        break
+    fi
+    sleep 0.5
+done
 if [[ ! "$stm32_subscription_count" =~ ^[1-9][0-9]*$ ]]; then
     echo "$stm32_command_info" >&2
-    echo "ERROR: /stm32/joint_commands has no STM32/micro-ROS subscriber." >&2
+    echo "ERROR: /stm32/joint_commands has no STM32/micro-ROS subscriber after discovery timeout." >&2
     exit 1
 fi
 pass "/stm32/joint_commands has $stm32_subscription_count subscriber(s)."
@@ -821,7 +839,7 @@ ack_deadline=$((SECONDS + STM32_STATE_TIMEOUT))
 last_command_sequence="0"
 while (( SECONDS < ack_deadline )); do
     stm32_status_sample="$(
-        timeout 5 ros2 topic echo /stm32/status --once 2>/dev/null || true
+        timeout 5 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon 2>/dev/null || true
     )"
     last_command_sequence="$(
         awk '/^last_command_sequence:/ {print $2; exit}' <<<"$stm32_status_sample"
