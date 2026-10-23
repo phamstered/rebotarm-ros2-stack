@@ -15,6 +15,9 @@
   <depend>pinocchio</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>controller_manager_msgs</depend>
+  <depend>rclcpp_action</depend>
   <depend>rclcpp_lifecycle</depend>
   <exec_depend>rclpy</exec_depend>
   <depend>sensor_msgs</depend>

@@ -314,3 +314,57 @@ def test_mock_vla_chunk_publisher_targets_default_topic():
     assert "declare_parameter('topic', '/vla/joint_chunk')" in script
     assert 'VlaJointChunk' in script
 
+
+
+def test_gravity_identification_action_contract():
+    definition = (PACKAGE_ROOT / 'action' / 'GravityIdentification.action').read_text()
+    assert 'uint8 MODE_FULL_ARM_GRAVITY=0' in definition
+    assert 'uint8 MODE_PAYLOAD_SUBMODE=1' in definition
+    assert 'uint32 DEFAULT_JOINT_MASK=63' in definition
+    assert 'uint8 PHASE_FAILED=10' in definition
+    assert 'float32[] gravity_scales' in definition
+    assert 'float32[] torque_biases_nm' in definition
+    assert 'float32[] residual_nm' in definition
+
+
+def test_gravity_identification_orchestrator_is_wired():
+    cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
+    package_xml = (PACKAGE_ROOT / 'package.xml').read_text()
+    constants = (
+        PACKAGE_ROOT / 'include' / 'microros_stm32h723_bridge' /
+        'gravity_identification_constants.hpp').read_text()
+    node_source = (PACKAGE_ROOT / 'src' / 'gravity_identification_node.cpp').read_text()
+    launch_source = (PACKAGE_ROOT / 'launch' / 'gravity_identification.launch.py').read_text()
+    params = yaml.safe_load(
+        (PACKAGE_ROOT / 'config' / 'gravity_identification.yaml').read_text())
+    controllers = yaml.safe_load(
+        (PACKAGE_ROOT / 'config' / 'arm_controllers.yaml').read_text())
+
+    assert 'gravity_identification_node' in cmake_source
+    assert 'src/gravity_identification_node.cpp' in cmake_source
+    assert 'test_gravity_identification_fit' in cmake_source
+    assert '<depend>rclcpp_action</depend>' in package_xml
+    assert '<depend>controller_manager_msgs</depend>' in package_xml
+    assert 'ACTION_SERVER_NAME = "/StartGravityID"' in constants
+    assert 'MODE_PAYLOAD_SUBMODE' in node_source
+    assert 'abort_to_hold' in node_source
+    assert 'MODE_TRACK' in node_source
+    assert 'stop_controllers' in node_source
+    assert '/stm32/joint_commands' in node_source
+    assert '/stm32/joint_states' in node_source
+    assert 'gravity_identification_node' in launch_source
+    node_params = params['gravity_identification']['ros__parameters']
+    assert node_params['command_topic'] == '/stm32/joint_commands'
+    assert node_params['state_topic'] == '/stm32/joint_states'
+    assert len(node_params['pose_amplitudes']) == 6
+    assert node_params['pose_amplitudes'][0] != node_params['pose_amplitudes'][3]
+    gc = controllers['gravity_compensation_controller']['ros__parameters']
+    assert 'torque_biases' in gc
+    assert len(gc['torque_biases']) == 6
+
+
+def test_gravity_compensation_supports_biases_and_hot_reload():
+    source = (PACKAGE_ROOT / 'src' / 'gravity_compensation_controller.cpp').read_text()
+    assert 'torque_biases' in source
+    assert 'on_parameters_set' in source
+    assert 'add_on_set_parameters_callback' in source
