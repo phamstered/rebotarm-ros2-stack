@@ -2,11 +2,13 @@
 #define MICROROS_STM32H723_BRIDGE__GRAVITY_COMPENSATION_CONTROLLER_HPP_
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
 #include "controller_interface/controller_interface.hpp"
 #include "microros_stm32h723_bridge/gravity_compensation.hpp"
+#include "rclcpp/node_interfaces/node_parameters_interface.hpp"
 
 namespace microros_stm32h723_bridge
 {
@@ -27,11 +29,17 @@ public:
     const rclcpp_lifecycle::State & previous_state) override;
 
 private:
+  rcl_interfaces::msg::SetParametersResult on_parameters_set(
+    const std::vector<rclcpp::Parameter> & parameters);
+
   GravityCompensation gravity_;
   std::vector<std::string> joints_;
+  std::mutex gains_mutex_;
   std::vector<double> gravity_scales_;
+  std::vector<double> torque_biases_;
   std::vector<double> effort_limits_;
   std::string model_urdf_path_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
 };
 
 }  // namespace microros_stm32h723_bridge
