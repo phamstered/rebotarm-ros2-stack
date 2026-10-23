@@ -1,7 +1,7 @@
 # 一键全关节重力 / 参数辨识（设计草案）
 
 > 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD/TRACK**（「重力辨识会话」，无 GravityID 模式位）；UI（rebotarm-debug-desk）只调 action。  
-> 状态：**Action 接口已冻结**（`/StartGravityID`，见 `action/GravityIdentification.action`）；编排状态机 / 拟合 / 激励仍为 TODO。现有 `GravityCompensationController` + `Joint4CalibrationController` 仍保留；本设计是其 **一键、全关节、可脚本化** 的上位编排。
+> 状态：**Action 接口已冻结**（PR #23）；**FULL_ARM 编排已落地**（`gravity_identification_node` → `/StartGravityID`）。PAYLOAD 子模式 / 命名姿态集 / Jetson E2E 仍为后续。现有 `GravityCompensationController`（含 `torque_biases` + 参数热加载）与 `Joint4CalibrationController` 仍保留。
 
 ## 1. Goal / Non-goals
 
@@ -333,3 +333,46 @@ Payload 子模式见 §6。
 2. 激励姿态集：内置表 vs desk 下发 `pose_set_id`。
 3. ~~fault code 数值是否已在 executor 占用~~ — **已拍板**：以 executor 现网十进制为准（见 §4.4；别名映射见 executor PR #7）。
 4. 静置/采样是否第一版就强制 TRACK@v≈0 前馈，还是允许纯 HOLD（effort=0）采样后再拟合（建议：有 GravityCompensation 时用 TRACK@v≈0）。
+
+---
+
+## 10. 实现状态（v1 FULL_ARM）
+
+| 项 | 状态 |
+|----|------|
+| Action IDL `/StartGravityID` | 已合入 main（PR #23） |
+| 编排节点 `gravity_identification_node` | **已实现**（本 PR）：IDLE→…→DONE/FAILED；连续 JointCommand；TRACK@v≈0 采样；abort→HOLD |
+| 内置激励姿态 | 12 组；j1–3 / j4–6 分幅值（DM4340P vs DM4310） |
+| 拟合 `τ≈s·τ_model+b` | 头文件纯函数 + gtest |
+| YAML `~/.rebotarm/gravity_id_latest.yaml` | 已写 schema_version=1 |
+| GC `torque_biases` + `set_parameters` 热加载 | 已实现；若控制器未激活则 soft-fail + 文档手动 reload |
+| PAYLOAD_SUBMODE | **拒绝**（用现有 `joint4_calibration_controller`） |
+| `pose_set_id` 命名集 | 忽略并 WARN（v1 仅内置集） |
+| 与 MicroRosSystem 互斥 | 尝试 `switch_controller` stop；**推荐 `state_only` bring-up** 独占 `/stm32/joint_commands` |
+| Jetson 实机 E2E | **未在 CI 盒验证** — 见 PR 说明 |
+
+### 如何运行（Jetson）
+
+```bash
+# Terminal A: agent + arm read path (state_only avoids CM writing JointCommand)
+ros2 launch microros_stm32h723_bridge stm32h723_arm.launch.py state_only:=true
+
+# Terminal B: orchestrator
+ros2 launch microros_stm32h723_bridge gravity_identification.launch.py
+
+# Terminal C: desk / CLI
+ros2 action send_goal /StartGravityID \
+  microros_stm32h723_bridge/action/GravityIdentification \
+  "{joint_mask: 0, mode: 0, write_yaml: true, hot_reload: true, lock_gripper: true, settle_time_s: 1.5, capture_window_s: 1.0, max_velocity_rad_s: 0.15, max_effort_nm: 10.0}"
+```
+
+热加载失败时：把 Result.`yaml_path` 中的 `gravity_scales` / `torque_biases_nm` 拷进 `arm_controllers.yaml` 后重新 activate `gravity_compensation_controller`，或对运行中的控制器调用 `ros2 param set /gravity_compensation_controller …`。
+
+### 话题（与现网一致，无改名）
+
+| 用途 | 话题 |
+|------|------|
+| 命令 | `/stm32/joint_commands` (`JointCommand`) |
+| 采样 | `/stm32/joint_states` (`sensor_msgs/JointState`) |
+| 故障透传 | `/stm32/status` (`HardwareStatus`) |
+| Action | `/StartGravityID` |
