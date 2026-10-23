@@ -47,6 +47,7 @@ gravity_compensation_controller:
     joints: [joint1, joint2, joint3, joint4, joint5, joint6]
     model_urdf_path: ""
     gravity_scales: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    torque_biases: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     effort_limits: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
 
 # This controller is mutually exclusive with gravity_compensation_controller.

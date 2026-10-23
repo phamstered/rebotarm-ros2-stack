@@ -1,0 +1,28 @@
+# Defaults for /StartGravityID orchestrator (FULL_ARM v1).
+gravity_identification:
+  ros__parameters:
+    joints: [joint1, joint2, joint3, joint4, joint5, joint6]
+    model_urdf_path: ""
+    command_topic: /stm32/joint_commands
+    state_topic: /stm32/joint_states
+    status_topic: /stm32/status
+    default_yaml_path: ~/.rebotarm/gravity_id_latest.yaml
+    controller_manager_name: /controller_manager
+    require_exclusive_bus: true
+    attempt_controller_switch: true
+    command_period_s: 0.02
+    position_tolerance_rad: 0.03
+    velocity_settle_threshold: 0.02
+    minimum_model_span_nm: 0.15
+    state_max_age_s: 0.25
+    # |effort| hard-capped at 10 Nm in code; per-joint soft limits below.
+    # Proximal DM4340P (j1-3) vs distal DM4310 (j4-6).
+    effort_limits: [10.0, 10.0, 10.0, 6.0, 6.0, 6.0]
+    track_kp: [40.0, 40.0, 40.0, 15.0, 15.0, 15.0]
+    track_kd: [3.0, 3.0, 3.0, 1.5, 1.5, 1.5]
+    hold_kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0]
+    hold_kd: [2.0, 2.0, 2.0, 1.5, 1.5, 1.5]
+    pose_amplitudes: [0.45, 0.40, 0.45, 0.30, 0.25, 0.35]
+    pose_centers: [0.0, -0.70, -0.80, 0.0, 0.0, 0.0]
+    prior_gravity_scales: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    prior_torque_biases_nm: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

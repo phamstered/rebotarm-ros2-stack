@@ -26,6 +26,9 @@ unset(PYTHON_SOABI CACHE)
 unset(PythonExtra_EXTENSION_SUFFIX CACHE)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(controller_manager_msgs REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(action_msgs REQUIRED)
@@ -93,6 +96,28 @@ target_link_libraries(${GRAVITY_CONTROLLER_LIBRARY} "${cpp_typesupport_target}")
 pluginlib_export_plugin_description_file(
   controller_interface gravity_compensation_controller.xml)
 
+set(GRAVITY_IDENTIFICATION_NODE gravity_identification_node)
+add_executable(${GRAVITY_IDENTIFICATION_NODE}
+  src/gravity_identification_node.cpp
+  src/gravity_compensation.cpp
+)
+target_include_directories(${GRAVITY_IDENTIFICATION_NODE} PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(${GRAVITY_IDENTIFICATION_NODE}
+  ament_index_cpp
+  controller_manager_msgs
+  rcl_interfaces
+  rclcpp
+  rclcpp_action
+  sensor_msgs
+  std_msgs
+)
+target_link_libraries(${GRAVITY_IDENTIFICATION_NODE} pinocchio::pinocchio)
+target_link_libraries(${GRAVITY_IDENTIFICATION_NODE} "${cpp_typesupport_target}")
+
+
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch urdf DESTINATION share/${PROJECT_NAME})
 install(FILES
@@ -103,6 +128,9 @@ install(TARGETS ${HARDWARE_LIBRARY} ${GRAVITY_CONTROLLER_LIBRARY}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+)
+install(TARGETS ${GRAVITY_IDENTIFICATION_NODE}
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
   scripts/mock_stm32_node.py
@@ -121,6 +149,8 @@ if(BUILD_TESTING)
   target_include_directories(test_stop_lifecycle PRIVATE include)
   target_link_libraries(test_stop_lifecycle ${HARDWARE_LIBRARY} "${cpp_typesupport_target}")
   ament_target_dependencies(test_stop_lifecycle hardware_interface rclcpp rclcpp_lifecycle sensor_msgs std_srvs)
+  ament_add_gtest(test_gravity_identification_fit test/test_gravity_identification_fit.cpp)
+  target_include_directories(test_gravity_identification_fit PRIVATE include)
 endif()
 
 ament_export_include_directories(include)

@@ -31,7 +31,7 @@ constexpr uint8_t PHASE_DONE = 9;
 constexpr uint8_t PHASE_FAILED = 10;
 
 // Action server name (relative; resolve under node namespace as needed).
-constexpr const char * ACTION_SERVER_NAME = "StartGravityID";
+constexpr const char * ACTION_SERVER_NAME = "/StartGravityID";
 
 }  // namespace gravity_identification
 }  // namespace microros_stm32h723_bridge
