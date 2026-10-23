@@ -1,0 +1,59 @@
+# GravityIdentification.action
+# Server name: /StartGravityID
+# Type: microros_stm32h723_bridge/action/GravityIdentification
+# Fields frozen for desk UI — see docs/gravity-identification.md §2.
+
+# Goal
+# mode constants
+uint8 MODE_FULL_ARM_GRAVITY=0
+uint8 MODE_PAYLOAD_SUBMODE=1
+# joint_mask==0 means use DEFAULT_JOINT_MASK (0x3F = all 6 joints)
+uint32 DEFAULT_JOINT_MASK=63
+
+uint32 joint_mask
+uint8 mode
+string[] pose_set_id
+float32 settle_time_s
+float32 capture_window_s
+bool write_yaml
+bool hot_reload
+string output_yaml_path
+float32 max_effort_nm
+float32 max_velocity_rad_s
+float32 command_timeout_ms
+bool lock_gripper
+---
+# Result
+bool success
+uint16 fault_code
+float32[] gravity_scales
+float32[] torque_biases_nm
+float32[] rmse_per_joint
+float32 rmse_total
+string yaml_path
+string message
+---
+# Feedback
+# phase constants (see docs/gravity-identification.md §4.1)
+uint8 PHASE_IDLE=0
+uint8 PHASE_ARMING=1
+uint8 PHASE_ARMED=2
+uint8 PHASE_MOVING=3
+uint8 PHASE_HOLD_SETTLE=4
+uint8 PHASE_CAPTURING=5
+uint8 PHASE_FITTING=6
+uint8 PHASE_WRITING=7
+uint8 PHASE_ABORTING=8
+uint8 PHASE_DONE=9
+uint8 PHASE_FAILED=10
+
+uint8 phase
+uint16 pose_index
+uint16 pose_count
+uint32 active_joint_mask
+float32[] residual_nm
+float32[] measured_effort_nm
+float32[] model_effort_nm
+float32 rmse_running
+uint16 fault_code
+string message
