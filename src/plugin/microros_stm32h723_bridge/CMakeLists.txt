@@ -28,6 +28,8 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
+find_package(action_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -37,7 +39,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointCommand.msg"
   "msg/HardwareStatus.msg"
   "msg/VlaJointChunk.msg"
-  DEPENDENCIES std_msgs
+  "action/GravityIdentification.action"
+  DEPENDENCIES std_msgs action_msgs builtin_interfaces
 )
 
 set(HARDWARE_LIBRARY ${PROJECT_NAME}_hardware)

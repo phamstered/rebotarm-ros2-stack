@@ -1,7 +1,7 @@
 # 一键全关节重力 / 参数辨识（设计草案）
 
 > 房间共识摘要：编排在本仓库（ROS）；固件（rebotarm-executor）只做 **meas + HOLD/TRACK**（「重力辨识会话」，无 GravityID 模式位）；UI（rebotarm-debug-desk）只调 action。  
-> 状态：设计草案（未实现）。现有 `GravityCompensationController` + `Joint4CalibrationController` 仍保留；本设计是其 **一键、全关节、可脚本化** 的上位编排。
+> 状态：**Action 接口已冻结**（`/StartGravityID`，见 `action/GravityIdentification.action`）；编排状态机 / 拟合 / 激励仍为 TODO。现有 `GravityCompensationController` + `Joint4CalibrationController` 仍保留；本设计是其 **一键、全关节、可脚本化** 的上位编排。
 
 ## 1. Goal / Non-goals
 
@@ -82,6 +82,7 @@ string   yaml_path                # 写出路径；未写则为空
 string   message
 ```
 
+
 ### 2.5 固件侧「重力辨识会话」语义（对齐 executor）
 
 上位编排在固件侧 **不**增加 GravityID 模式位或专用消息。辨识会话 = 一串合法的 **HOLD / TRACK** `JointCommand` + 照常发布的 `JointState` / `HardwareStatus`（与 [rebotarm-executor PR #7](https://github.com/phamstered/rebotarm-executor/pull/7) / `docs/ros2-interface.md`「重力辨识会话」一致）。
@@ -104,6 +105,24 @@ ROS 编排节点在会话中只要求固件：
 固件无需识别「辨识模式」枚举；超时 / 命令丢失走现网 **command-loss → HOLD** 路径（见 §4.3）。
 
 ---
+
+### 2.6 Desk contract（字段冻结）
+
+Desk / UI 可立即按下列字段绑定；**不要**等待编排状态机落地。完整 IDL 以包内 `action/GravityIdentification.action` 为准。
+
+| 分区 | 字段 |
+|------|------|
+| **Goal** | `joint_mask`, `mode`, `pose_set_id`, `settle_time_s`, `capture_window_s`, `write_yaml`, `hot_reload`, `output_yaml_path`, `max_effort_nm`, `max_velocity_rad_s`, `command_timeout_ms`, `lock_gripper` |
+| **Feedback** | `phase`, `pose_index`, `pose_count`, `active_joint_mask`, `residual_nm`, `measured_effort_nm`, `model_effort_nm`, `rmse_running`, `fault_code`, `message` |
+| **Result** | `success`, `fault_code`, `gravity_scales`, `torque_biases_nm`, `rmse_per_joint`, `rmse_total`, `yaml_path`, `message` |
+
+常量（亦写入 `.action` IDL 与 `include/.../gravity_identification_constants.hpp`）：
+
+- `mode`: `MODE_FULL_ARM_GRAVITY=0`（默认路径）, `MODE_PAYLOAD_SUBMODE=1`
+- `phase`: `PHASE_IDLE=0` … `PHASE_FAILED=10`（见 §4.1）
+- `joint_mask==0` → 默认全臂 `DEFAULT_JOINT_MASK=0x3F`
+
+服务器名：`/StartGravityID`。编排节点未实现时，stub（若存在）会拒绝 goal 并返回 `success=false`。
 
 ## 3. YAML schema + 热加载
 
