@@ -11,7 +11,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch/', glob('launch/*.py')),
-        ('share/' + package_name + '/config/', glob('config/*.yaml')),
+        ('share/' + package_name + '/config/', glob('config/*.yaml') + glob('config/*.xml')),
     ],
     install_requires=['setuptools'],
     tests_require=['pytest'],
@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'relay_node = joint_state_relay.relay_node:main',
+            'leader_driver = joint_state_relay.leader_driver:main',
             'domain_bridge = joint_state_relay.domain_bridge:main',
             'calibrate_gripper = joint_state_relay.gripper_calibration:main',
         ],

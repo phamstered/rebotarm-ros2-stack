@@ -436,23 +436,8 @@ class JointStateRelay(Node):
 
 
 def main(args=None):
-    rclpy.init(args=args)
-    node = JointStateRelay()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    except Exception as e:
-        node.get_logger().error(f'Error: {e}')
-    finally:
-        try:
-            node.destroy_node()
-        except Exception:
-            pass
-        try:
-            rclpy.shutdown()
-        except Exception:
-            pass
+    from .lifecycle import spin_node
+    spin_node(JointStateRelay, args=args)
 
 
 if __name__ == '__main__':

@@ -116,3 +116,26 @@ ros2 run microros_stm32h723_bridge single_motor_smoke_test.py \
 - Jetson：`ssh damiao`
 - Ubuntu：`ssh ubuntu`
 - 新脚本需 `chmod +x`
+
+## Teleop discovery and signal shutdown
+
+`start_arm_teleop.sh` selects the installed `joint_state_relay/config/fastdds_udp.xml` (source fallback before install) when no explicit `FASTRTPS_DEFAULT_PROFILES_FILE` or `FASTDDS_DEFAULT_PROFILES_FILE` exists. It uses UDPv4 for the processes it starts; it does not remove live `/dev/shm` files or change micro-ROS Agent systemd configuration. This avoids stale/deleted SHM lock files isolating an already-running desktop Bridge from newly started nodes. An explicitly supplied XML profile keeps precedence; UDP may have different camera bandwidth/CPU costs.
+
+Rebuild `joint_state_relay` when updating this startup script:
+
+```bash
+colcon build --symlink-install --packages-select joint_state_relay
+source install/setup.bash
+```
+
+The managed leader process now runs `ros2 run joint_state_relay leader_driver --ros-args -r __ns:=/leader -p lock:=disable`. This adapter uses the existing external `robo_driver.robo_driver.Arm_contorl` node and its cleanup method; the Star Arm SDK, serial path, joint mapping and local vendor changes stay external. Both leader and relay treat `KeyboardInterrupt` / `ExternalShutdownException` as expected ROS signal shutdown, clean the node/context, and propagate other failures. A native `RCLError` from a wait-set shutdown race is ignored only after `rclpy.ok()` confirms that the context has closed; the same error in a live context remains a failure. The prior safe-stop confirmation before process cleanup, STM32 fault/feedback checks and startup acknowledgements still apply. STM32 JointState timeout remains an error.
+
+Read-only / isolated checks (use a nonzero ROS domain, no serial hardware):
+
+```bash
+colcon test --packages-select joint_state_relay
+colcon test-result --verbose
+ROS_DOMAIN_ID=222 python3 src/joint_state_relay/test/smoke_lifecycle_signals.py
+```
+
+The signal smoke test substitutes a synthetic vendor module and exercises repeated SIGINT/SIGTERM for the actual installed leader/relay executables, plus genuine initialization failure propagation.
