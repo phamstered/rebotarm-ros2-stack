@@ -233,6 +233,20 @@ fi
 source "$ROS_SETUP"
 source "$WORKSPACE_SETUP"
 export ROS_DOMAIN_ID="$DOMAIN_ID"
+# Process-scoped transport begin. Explicit deployment profiles take precedence.
+if [[ -z "${FASTRTPS_DEFAULT_PROFILES_FILE:-}${FASTDDS_DEFAULT_PROFILES_FILE:-}" ]]; then
+    transport_profile="$WORKSPACE_DIR/install/joint_state_relay/share/joint_state_relay/config/fastdds_udp.xml"
+    if [[ ! -f "$transport_profile" ]]; then
+        transport_profile="$WORKSPACE_DIR/src/joint_state_relay/config/fastdds_udp.xml"
+    fi
+    if [[ ! -f "$transport_profile" ]]; then
+        echo "ERROR: Missing Fast DDS transport profile; rebuild joint_state_relay." >&2
+        exit 1
+    fi
+    export FASTRTPS_DEFAULT_PROFILES_FILE="$transport_profile"
+    echo "Using process-scoped Fast DDS UDP transport (no shared-memory cleanup)."
+fi
+# Process-scoped transport end.
 export RCUTILS_COLORIZED_OUTPUT=0
 echo "Using ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 
@@ -527,6 +541,8 @@ if [[ "$CLEAN_BEFORE_START" == "true" ]]; then
         "/joint_state_relay/relay_node"
 
     if [[ "$START_LEADER" == "true" ]]; then
+        stop_matching_processes "leader lifecycle adapter" "/joint_state_relay/leader_driver"
+        stop_matching_processes "leader adapter wrapper" "ros2 run joint_state_relay leader_driver"
         stop_matching_processes "leader robo_driver" "/robo_driver/driver"
         stop_matching_processes "leader ros2 run wrapper" "ros2 run robo_driver driver"
     fi
@@ -569,12 +585,13 @@ elif [[ "$START_LEADER" == "true" ]]; then
         set -e
         source "$1"
         source "$2"
-        export ROS_DOMAIN_ID="$3"
+        source "$3"
+        export ROS_DOMAIN_ID="$4"
         export RCUTILS_COLORIZED_OUTPUT=0
-        exec ros2 run robo_driver driver --ros-args \
+        exec ros2 run joint_state_relay leader_driver --ros-args \
             -r __ns:=/leader \
             -p lock:=disable
-    ' _ "$ROS_SETUP" "$LEADER_SETUP" "$ROS_DOMAIN_ID" &
+    ' _ "$ROS_SETUP" "$LEADER_SETUP" "$WORKSPACE_SETUP" "$ROS_DOMAIN_ID" &
     LEADER_PID=$!
     pass "Leader robo_driver process started (PID $LEADER_PID)."
 else
