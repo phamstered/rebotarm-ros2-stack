@@ -25,6 +25,9 @@ COPY src/rebotarm_moveit_config/package.xml \
 COPY src/plugin/microros_stm32h723_bridge/package.xml \
      /tmp/ws/src/plugin/microros_stm32h723_bridge/package.xml
 
+# Use bash: Ubuntu /bin/sh (dash) has no pipefail.
+SHELL ["/bin/bash", "-c"]
+
 RUN set -euo pipefail \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
