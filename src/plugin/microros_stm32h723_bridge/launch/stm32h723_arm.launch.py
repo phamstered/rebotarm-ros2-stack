@@ -148,6 +148,10 @@ def generate_launch_description():
                 robot_description,
                 {'use_sim_time': use_sim_time},
             ],
+            # The ros2_control broadcaster can keep publishing its last joint
+            # positions after the hardware component becomes unconfigured.
+            # TF must follow the same live feedback used by Robot View.
+            remappings=[('/joint_states', '/stm32/joint_states')],
             output='screen',
         ),
         Node(

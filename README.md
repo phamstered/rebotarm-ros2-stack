@@ -67,7 +67,7 @@ colcon test && colcon test-result --verbose
 | 左臂腕部 RealSense RGBD | Jetson | `ros2 launch rebotarm_gazebo left_wrist_camera.launch.py`（多相机时指定 `serial_no:=...`） |
 | Sync + remote build | Dev machine | `./scripts/sync_and_build.sh` (uses `rsync --delete` — review first) |
 
-左腕相机入口固定使用 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，启用彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`；`camera_link → left_arm/wrist_link` 的零位姿静态 TF 将 RealSense 光学帧连接到现有 URDF hand-eye 外参。启动前需要安装 `realsense2_camera`、`tf2_ros` 并完成 `rebotarm_gazebo` 构建。
+左腕相机入口固定使用 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，启用彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`；`camera_link → left_arm/wrist_link` 的零位姿静态 TF 将 RealSense 光学帧连接到现有 URDF hand-eye 外参。真机启动文件让 `robot_state_publisher` 从 `/stm32/joint_states` 生成动态 TF，与 Robot View 的机械臂反馈保持一致，避免 ros2_control 硬件未配置时 `/joint_states` 仍输出旧姿态。启动前需要安装 `realsense2_camera`、`tf2_ros` 并完成 `rebotarm_gazebo` 构建。
 
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 
