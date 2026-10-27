@@ -1,0 +1,80 @@
+# Build and publish the ROS Humble CI base image to GHCR.
+#
+# Image: ghcr.io/phamstered/rebotarm-ros2-ci
+# Tags:  humble, humble-<short-sha>, humble-YYYYMMDD
+#
+# This workflow does NOT change .github/workflows/ci.yml job behavior.
+# A follow-up PR will pin ci.yml to the published image @sha256:<digest>.
+name: CI base image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "docker/ci/**"
+      - "**/package.xml"
+      - ".github/workflows/ci-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/phamstered/rebotarm-ros2-ci
+
+jobs:
+  build-and-push:
+    name: Build and push GHCR image
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (tags / labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=humble
+            type=sha,prefix=humble-,format=short
+            type=raw,value=humble-{{date 'YYYYMMDD'}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ci/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Summary (digest for ci.yml pin)
+        run: |
+          set -euo pipefail
+          DIGEST="${{ steps.build.outputs.digest }}"
+          echo "Published ${IMAGE_NAME}"
+          echo "Digest: ${DIGEST}"
+          echo "Prefer consuming by digest in a follow-up PR:"
+          echo "  container: ${IMAGE_NAME}@${DIGEST}"
+          {
+            echo "## CI base image"
+            echo ""
+            echo "- Image: \`${IMAGE_NAME}\`"
+            echo "- Digest: \`${DIGEST}\`"
+            echo "- Tags: \`humble\`, \`humble-<sha>\`, \`humble-YYYYMMDD\`"
+            echo "- Follow-up: pin \`.github/workflows/ci.yml\` to \`@${DIGEST}\` (do not use floating \`humble\` alone)"
+          } >> "${GITHUB_STEP_SUMMARY}"

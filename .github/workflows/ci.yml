@@ -12,6 +12,9 @@
 #   - Hardware bring-up (start_jetson.sh, CAN, STM32 micro-ROS agent)
 #   - Live Gazebo / MoveIt demos
 #   - External packages not in this repo (stararm102_description, micro_ros_agent)
+#
+# Upcoming: switch this job to ghcr.io/phamstered/rebotarm-ros2-ci@sha256:<digest>
+# (see docker/ci/ and .github/workflows/ci-image.yml); do not switch until the image exists.
 name: CI
 
 on:
