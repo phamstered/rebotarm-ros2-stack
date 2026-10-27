@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -61,6 +62,32 @@ def test_state_only_launch_uses_read_only_republisher():
 
     cmake_source = (PACKAGE_ROOT / 'CMakeLists.txt').read_text()
     assert 'scripts/stm32_state_republisher.py' in cmake_source
+
+
+def test_robot_state_publisher_uses_live_stm32_joint_feedback():
+    launch_source = (
+        PACKAGE_ROOT / 'launch' / 'stm32h723_arm.launch.py'
+    ).read_text()
+    nodes = (
+        node for node in ast.walk(ast.parse(launch_source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == 'Node'
+        and any(
+            keyword.arg == 'executable'
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value == 'robot_state_publisher'
+            for keyword in node.keywords
+        )
+    )
+    publisher = next(nodes)
+    remappings = next(
+        keyword.value for keyword in publisher.keywords
+        if keyword.arg == 'remappings'
+    )
+    assert ast.literal_eval(remappings) == [
+        ('/joint_states', '/stm32/joint_states')
+    ]
 
 
 def test_bringup_profile_exports_separate_position_and_effort_interfaces():

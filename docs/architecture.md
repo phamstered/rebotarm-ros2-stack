@@ -62,7 +62,7 @@ ros2_control 控制器层（controller_manager）
 | `…/GravityCompensationController` | `ControllerInterface` | 只占 **effort** 命令接口；Pinocchio `GravityCompensation` |
 | `…/Joint4CalibrationController` | `ControllerInterface` | 多姿态回归（gravity_scale / 偏置 / camera_link 等效质量）；与重力控制器 **互斥** |
 
-`stm32h723_arm.launch.py` 用 launch 参数组合位置控制器与重力/标定：
+`stm32h723_arm.launch.py` 用 launch 参数组合位置控制器与重力/标定；其中 `robot_state_publisher` 订阅 `/stm32/joint_states` 生成动态 TF，使用与 Robot View 相同的实时反馈。`/joint_states` 仍由 ros2_control 广播，但硬件 unconfigured 时可能继续输出最后一次位置，不能用于相机点云的实时 TF：
 
 | 参数 | 取值 | 效果 |
 |------|------|------|
