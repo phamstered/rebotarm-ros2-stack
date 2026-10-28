@@ -395,6 +395,9 @@
   </joint>
 
   <!-- RealSense D435i mount calibrated with MoveIt hand-eye calibration.
+       Source: 2026-09-12 export, link6 -> camera_link, quaternion xyzw
+       [0.598366, 0.00397963, 0.801167, 0.00856162] (normalized before RPY conversion).
+       Use the active quaternion, not the inconsistent commented Euler values.
        The RealSense driver publishes the optical frames below camera_link. -->
   <link
     name="camera_link">
@@ -419,8 +422,8 @@
     name="camera_mount_joint"
     type="fixed">
     <origin
-      xyz="0.0520 -0.0139 0.0672"
-      rpy="0.0136 1.2829 3.1100" />
+      xyz="0.0520795 -0.0139823 0.0672182"
+      rpy="0.058487598396866 -1.282446543624948 3.076557194400623" />
     <parent
       link="link6" />
     <child

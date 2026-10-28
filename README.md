@@ -71,6 +71,8 @@ colcon test && colcon test-result --verbose
 
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 
+相机安装姿态以 2026-09-12 MoveIt 手眼标定导出中实际使用的四元数为准：`link6 → camera_link`，`xyzw=[0.598366, 0.00397963, 0.801167, 0.00856162]`。URDF 将归一化四元数转换为 RPY，pitch 为负值；原导出中注释掉的 RPY 与该四元数不等价。RealSense 光学 `+Z` 经相机 body `+X` 指向腕部前方（`link6 +Z` 侧）。该修复恢复已有标定结果；重新安装相机后仍需重新标定。
+
 ### Preview docs locally
 
 ```bash
