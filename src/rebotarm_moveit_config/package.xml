@@ -38,6 +38,11 @@
   <exec_depend>tf2_ros</exec_depend>                        <!-- TF2 库 -->
   <exec_depend>xacro</exec_depend>                          <!-- URDF xacro 处理 -->
 
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>microros_stm32h723_bridge</exec_depend>
+
   <!-- 机器人描述来源 -->
   <exec_depend>rebotarm_gazebo</exec_depend>                <!-- URDF + mesh 文件 -->
 

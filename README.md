@@ -69,6 +69,14 @@ colcon test && colcon test-result --verbose
 
 左腕相机入口固定使用 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，启用彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`；`camera_link → left_arm/wrist_link` 的零位姿静态 TF 将 RealSense 光学帧连接到现有 URDF hand-eye 外参。真机启动文件让 `robot_state_publisher` 从 `/stm32/joint_states` 生成动态 TF，与 Robot View 的机械臂反馈保持一致，避免 ros2_control 硬件未配置时 `/joint_states` 仍输出旧姿态。启动前需要安装 `realsense2_camera`、`tf2_ros` 并完成 `rebotarm_gazebo` 构建。
 
+真实轨迹控制器已显式激活后，可单独启动点位规划服务：
+
+```bash
+ros2 launch rebotarm_moveit_config real_move_group.launch.py
+```
+
+该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 0.5 rad/s、0.5 rad/s²；上位机点位运动使用 0.2 缩放。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
+
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 
 相机安装姿态以 2026-09-12 MoveIt 手眼标定导出中实际使用的四元数为准：`link6 → camera_link`，`xyzw=[0.598366, 0.00397963, 0.801167, 0.00856162]`。URDF 将归一化四元数转换为 RPY，pitch 为负值；原导出中注释掉的 RPY 与该四元数不等价。RealSense 光学 `+Z` 经相机 body `+X` 指向腕部前方（`link6 +Z` 侧）。该修复恢复已有标定结果；重新安装相机后仍需重新标定。

@@ -139,3 +139,21 @@ ROS_DOMAIN_ID=222 python3 src/joint_state_relay/test/smoke_lifecycle_signals.py
 ```
 
 The signal smoke test substitutes a synthetic vendor module and exercises repeated SIGINT/SIGTERM for the actual installed leader/relay executables, plus genuine initialization failure propagation.
+
+## 保存点位的真机 MoveIt 服务
+
+已通过原启动流程激活真实轨迹控制器后，单独运行：
+
+```bash
+ros2 launch rebotarm_moveit_config real_move_group.launch.py
+```
+
+该入口不激活硬件或切换控制器，只使用 OMPL；复用 micro-ROS URDF、当前相机安装变换、SRDF 和米制夹爪反馈 `/joint_states`。上位机点位执行使用 `/move_action`，再由 MoveIt 调用唯一的 `arm_trajectory_controller/follow_joint_trajectory`，不直接执行模拟 demo。
+
+环境碰撞依据 Planning Scene 中的已知障碍物；上位机显示 RGBD 点云不等于点云已注册为碰撞环境。可在无硬件的隔离域运行真实规划/障碍物拒绝验证：
+
+```bash
+ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
+```
+
+测试启动自己的 move_group，只调用状态有效性与规划服务，不发送执行目标；退出时清理临时进程。
