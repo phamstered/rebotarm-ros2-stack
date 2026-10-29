@@ -101,7 +101,7 @@ jobs:
           source install/setup.bash
           set -u
           colcon test \
-            --packages-select microros_stm32h723_bridge rebotarm_gazebo \
+            --packages-select microros_stm32h723_bridge rebotarm_gazebo rebotarm_moveit_config \
             --event-handlers console_direct+
           colcon test-result --verbose
 

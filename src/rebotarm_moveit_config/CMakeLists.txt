@@ -13,4 +13,9 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 # 安装 Setup Assistant 元数据文件
 install(FILES .setup_assistant DESTINATION share/${PROJECT_NAME})
 
+if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  enable_testing()
+  add_test(NAME real_move_group_contract COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/test_real_move_group.py)
+endif()
 ament_package()
