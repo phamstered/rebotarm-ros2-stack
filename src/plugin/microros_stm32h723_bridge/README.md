@@ -158,11 +158,19 @@ ros2 control list_controllers
 ```
 
 This profile requires firmware whose active mask contains `0x3F` and exports
-separate position and effort interfaces for joint1-6. RETURN/HOLD gains match the legacy follower
-driver. The current TRACK experiment uses 40.0/3.0 for joint1-3, 40.0/1.5 for
-joint4, and 10.0/1.5 for joint5-6. IDLE is 0.0/1.0 for all six joints. Gravity
-feed-forward is disabled by default and is limited to 10 N*m for joint1-6 when
-enabled. State-only mode never loads this control path.
+separate position, effort and velocity interfaces for joint1-6. The trajectory
+controller claims position+velocity; its interpolated velocity is forwarded to
+MIT velocity feed-forward only in TRACK while that interface is owned.
+Position-only Teleop/VLA and the gripper retain zero velocity feed-forward.
+Interface stop/start clears residual velocity; HOLD/RETURN/DISABLE always output
+zero velocity. Legacy position+effort hardware profiles remain supported.
+
+RETURN/HOLD gains match the legacy follower driver. The current TRACK defaults
+are 40.0/3.0 for joint1-3 and 15.0/1.5 for joint4-6 (kp/kd); this change does not
+tune gains or gravity calibration. IDLE is 0.0/1.0 for all six joints. The
+independent gravity effort controller is disabled by default in the launch.
+The hardware profile clamps effort feed-forward to 10 N*m for joint1-3 and
+6 N*m for joint4-6. State-only mode never loads this control path.
 
 ## Arm teleoperation
 

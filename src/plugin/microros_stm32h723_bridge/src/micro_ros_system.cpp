@@ -83,13 +83,16 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       if ((configured_joint_mask_ & protocol_bit) != 0U) {
         throw std::runtime_error("duplicate hardware joint: " + joint.name);
       }
-      if (joint.command_interfaces.size() != 2 ||
+      if ((joint.command_interfaces.size() != 2 && joint.command_interfaces.size() != 3) ||
         joint.command_interfaces[0].name != hardware_interface::HW_IF_POSITION ||
-        joint.command_interfaces[1].name != hardware_interface::HW_IF_EFFORT)
+        joint.command_interfaces[1].name != hardware_interface::HW_IF_EFFORT ||
+        (joint.command_interfaces.size() == 3 &&
+        joint.command_interfaces[2].name != hardware_interface::HW_IF_VELOCITY))
       {
         throw std::runtime_error(
-                "command interface order must be position, effort for every joint");
+                "command interface order must be position, effort, optional velocity");
       }
+      velocity_available_[protocol_index] = joint.command_interfaces.size() == 3;
       if (joint.state_interfaces.size() != 3) {
         throw std::runtime_error("each joint must export position, velocity and effort state interfaces");
       }
@@ -180,7 +183,7 @@ std::vector<hardware_interface::StateInterface> MicroRosSystem::export_state_int
 std::vector<hardware_interface::CommandInterface> MicroRosSystem::export_command_interfaces()
 {
   std::vector<hardware_interface::CommandInterface> interfaces;
-  interfaces.reserve(joint_names_.size() * 2);
+  interfaces.reserve(joint_names_.size() * 3);
   for (std::size_t i = 0; i < joint_names_.size(); ++i) {
     const auto protocol_index = configured_protocol_indices_[i];
     interfaces.emplace_back(
@@ -189,8 +192,76 @@ std::vector<hardware_interface::CommandInterface> MicroRosSystem::export_command
     interfaces.emplace_back(
       joint_names_[i], hardware_interface::HW_IF_EFFORT,
       &command_effort_[protocol_index]);
+    if (velocity_available_[protocol_index]) {
+      interfaces.emplace_back(
+        joint_names_[i], hardware_interface::HW_IF_VELOCITY,
+        &command_velocity_[protocol_index]);
+    }
   }
   return interfaces;
+}
+
+hardware_interface::return_type MicroRosSystem::prepare_command_mode_switch(
+  const std::vector<std::string> & start_interfaces,
+  const std::vector<std::string> & stop_interfaces)
+{
+  auto positions = position_claimed_mask_.load();
+  auto velocities = velocity_claimed_mask_.load();
+  for (std::size_t i = 0; i < joint_names_.size(); ++i) {
+    const auto index = configured_protocol_indices_[i];
+    const uint32_t bit = 1U << index;
+    const auto position = joint_names_[i] + "/position";
+    const auto velocity = joint_names_[i] + "/velocity";
+    auto has = [](const auto & list, const auto & key) {
+        return std::find(list.begin(), list.end(), key) != list.end();
+      };
+    if (has(stop_interfaces, position)) {positions &= ~bit;}
+    if (has(stop_interfaces, velocity)) {velocities &= ~bit;}
+    if (has(start_interfaces, position)) {positions |= bit;}
+    if (has(start_interfaces, velocity)) {
+      if (!velocity_available_[index]) {return hardware_interface::return_type::ERROR;}
+      velocities |= bit;
+    }
+  }
+  // MIT velocity feed-forward is only valid alongside a position owner.
+  return (velocities & ~positions) == 0U ? hardware_interface::return_type::OK :
+         hardware_interface::return_type::ERROR;
+}
+
+hardware_interface::return_type MicroRosSystem::perform_command_mode_switch(
+  const std::vector<std::string> & start_interfaces,
+  const std::vector<std::string> & stop_interfaces)
+{
+  if (prepare_command_mode_switch(start_interfaces, stop_interfaces) !=
+    hardware_interface::return_type::OK)
+  {
+    return hardware_interface::return_type::ERROR;
+  }
+  auto positions = position_claimed_mask_.load();
+  auto velocities = velocity_claimed_mask_.load();
+  for (const auto & key : stop_interfaces) {
+    for (std::size_t i = 0; i < joint_names_.size(); ++i) {
+      const auto index = configured_protocol_indices_[i];
+      if (key == joint_names_[i] + "/position") {positions &= ~(1U << index);}
+      if (key == joint_names_[i] + "/velocity") {
+        velocities &= ~(1U << index);
+        command_velocity_[index] = 0.0;
+      }
+    }
+  }
+  for (const auto & key : start_interfaces) {
+    for (std::size_t i = 0; i < joint_names_.size(); ++i) {
+      const auto index = configured_protocol_indices_[i];
+      if (key == joint_names_[i] + "/position") {positions |= 1U << index;}
+      if (key == joint_names_[i] + "/velocity") {
+        command_velocity_[index] = 0.0;
+        velocities |= 1U << index;
+      }
+    }
+  }
+  position_claimed_mask_.store(positions);
+  velocity_claimed_mask_.store(velocities);
+  return hardware_interface::return_type::OK;
 }
 
 hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_lifecycle::State &)
@@ -342,7 +413,13 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     }
     const double raw_position =
       (targets[i] - position_offsets_[i]) / position_scales_[i];
-    const double raw_velocity = command_velocity_[i] / position_scales_[i];
+    const bool velocity_enabled = message.mode == msg::JointCommand::MODE_TRACK &&
+      (velocity_claimed_mask_.load() & (1U << i)) != 0U;
+    const double raw_velocity = velocity_enabled ? command_velocity_[i] / position_scales_[i] : 0.0;
+    if (!std::isfinite(raw_velocity) || !std::isfinite(static_cast<float>(raw_velocity))) {
+      RCLCPP_ERROR(node_->get_logger(), "Rejected non-finite velocity command");
+      return hardware_interface::return_type::ERROR;
+    }
     message.position[i] = gains.kp[i] == 0.0 ? 0.0F : static_cast<float>(raw_position);
     message.velocity[i] = static_cast<float>(raw_velocity);
     message.kp[i] = static_cast<float>(gains.kp[i]);
