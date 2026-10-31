@@ -1,0 +1,8 @@
+# Experimental, explicitly opt-in. Not a calibrated profile or a friction model.
+# Seven protocol slots; gripper must stay disabled. First six use motor rad/Nm.
+# Ki units: Nm/(rad*s), max_effort: Nm, slew_rate: Nm/s.
+# These bounds cover the observed current-pose residuals only; real multi-pose
+# validation and gain tuning are required before production use.
+ki: [4.0, 4.0, 4.0, 0.0, 0.0, 0.0, 0.0]
+max_effort: [1.2, 1.5, 2.0, 0.0, 0.0, 0.0, 0.0]
+slew_rate: [0.05, 0.1, 0.1, 0.0, 0.0, 0.0, 0.0]

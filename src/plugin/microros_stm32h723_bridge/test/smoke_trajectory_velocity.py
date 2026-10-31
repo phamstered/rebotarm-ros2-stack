@@ -3,6 +3,7 @@
 
 Requires ROS_DOMAIN_ID in [200,232]. Never starts a serial/physical driver.
 """
+import argparse
 import os
 from pathlib import Path
 import signal
@@ -10,10 +11,15 @@ import subprocess
 import tempfile
 import time
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--integral', action='store_true', help='Exercise explicitly enabled experimental effort trim')
+args = parser.parse_args()
+
 if not 200 <= int(os.environ.get('ROS_DOMAIN_ID', '0')) <= 232:
     raise SystemExit('Set an isolated ROS_DOMAIN_ID in [200,232]; never run in production domain')
 
 import rclpy
+from ament_index_python.packages import get_package_share_directory
 from rclpy.action import ActionClient
 from rclpy.qos import qos_profile_sensor_data
 from control_msgs.action import FollowJointTrajectory
@@ -63,8 +69,12 @@ try:
             process = subprocess.Popen(arguments, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             owned.append(process)
         launch(['ros2', 'run', 'microros_stm32h723_bridge', 'mock_stm32_node.py', '--ros-args', '-p', 'active_joint_mask:=63'], 'mock.log')
-        launch(['ros2', 'launch', 'microros_stm32h723_bridge', 'stm32h723_arm.launch.py',
-                'position_controller:=trajectory', 'enable_gravity_controller:=false', 'enable_gripper:=false'], 'control.log')
+        control_args = ['ros2', 'launch', 'microros_stm32h723_bridge', 'stm32h723_arm.launch.py',
+                'position_controller:=trajectory', 'enable_gravity_controller:=false', 'enable_gripper:=false']
+        if args.integral:
+            settings = Path(get_package_share_directory('microros_stm32h723_bridge')) / 'config/trajectory_integral.example.yaml'
+            control_args.append(f'trajectory_integral_config:={settings}')
+        launch(control_args, 'control.log')
         end = time.monotonic()+35
         while time.monotonic() < end:
             response = request('/controller_manager/list_controllers', ListControllers, ListControllers.Request())
@@ -92,10 +102,19 @@ try:
         assert max(abs(float(m.velocity[0])) for m in during)>.05, 'JTC velocity did not reach MCU command'
         assert max(abs(float(m.velocity[1])) for m in during)>.02
         assert all(float(m.velocity[6])==0. for m in during)
+        if args.integral:
+            # The mock lags position during motion. Check the installed launch
+            # actually loaded the opt-in file; this is not a friction model.
+            assert any(float(m.effort[0]) > 1e-5 for m in during), 'enabled integral never reached MCU'
+            assert all(abs(float(m.effort[i])) <= cap+1e-6
+                       for m in during for i,cap in enumerate((1.2,1.5,2.0,0.,0.,0.,0.)))
+        else:
+            assert all(all(float(e)==0. for e in m.effort) for m in during), 'default-off effort changed'
         switch(['arm_teleop_controller'], ['arm_trajectory_controller'])
         begin=time.monotonic();spin(.6)
         after=[m for t,m in messages if t>begin+.1]
         assert len(after)>10 and all(all(float(v)==0. for v in m.velocity) for m in after), 'velocity leaked into Teleop'
+        assert all(all(float(e)==0. for e in m.effort) for m in after), 'integral leaked into Teleop'
         switch(['arm_trajectory_controller'], ['arm_teleop_controller'])
         begin=time.monotonic();spin(.5)
         after=[m for t,m in messages if t>begin+.1]
@@ -114,8 +133,10 @@ try:
         assert any(abs(float(m.velocity[0])) > .01 for t,m in messages if t>=begin), 'positions-only compatibility failed'
         response=request('/microros_stm32h723_hardware/disable', Trigger, Trigger.Request())
         assert response.success;begin=time.monotonic();spin(.3)
-        assert any(m.mode==3 and all(float(v)==0. for v in m.velocity) for t,m in messages if t>=begin)
-        print('PASS actual JTC position+velocity -> MicroRosSystem -> mock MCU, Teleop switch, reactivation, DISABLE; domain',os.environ['ROS_DOMAIN_ID'])
+        assert any(m.mode==3 and all(float(v)==0. for values in
+                   (m.position,m.velocity,m.kp,m.kd,m.effort) for v in values)
+                   for t,m in messages if t>=begin)
+        print('PASS actual JTC position+velocity -> MicroRosSystem -> mock MCU, Teleop switch, reactivation, DISABLE; integral',args.integral,'domain',os.environ['ROS_DOMAIN_ID'])
 except BaseException:
     for log in logs:
         log.flush();log.seek(0);print(log.read())

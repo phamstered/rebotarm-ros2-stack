@@ -112,3 +112,7 @@ micro-ROS 一键守卫启动：`./scripts/start_arm_teleop.sh`（九段自检：
 
 外部推理发布 `/vla/joint_chunk`（`VlaJointChunk`）→ `VlaPositionController` 写 position，可选 `gravity_compensation_controller` 写 effort → `MicroRosSystem` 合成 MIT。不要把直接写 `/stm32/joint_commands` 作为主路径。详见 [VLA integration](./vla-integration) 与 [VLA 使用指南](./vla-usage)。
 
+
+### 轨迹保持静差
+
+可通过显式 `trajectory_integral_config` 选择实验性的有界积分 effort 补偿，默认关闭，不改变既有增益或 0.005 rad 起点门禁。配置、启用边界和隔离/现场验证顺序见 [轨迹保持积分说明](./trajectory-hold-integral)。

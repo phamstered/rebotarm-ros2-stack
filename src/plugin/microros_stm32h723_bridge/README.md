@@ -334,3 +334,11 @@ ros2 control switch_controllers \
   --deactivate arm_teleop_controller \
   --activate arm_trajectory_controller --strict
 ```
+
+## Optional trajectory integral trim (experimental)
+
+An independent `trajectory_integral_config` launch/Xacro argument enables bounded
+integral effort trim only for TRACK joints owning position+velocity. It defaults
+to empty/off; it never changes MIT gains, feedback or the position-start gate.
+The example YAML is for supervised validation, not a calibrated production profile.
+See [holding-error diagnosis and validation](../../../docs/trajectory-hold-integral.md).

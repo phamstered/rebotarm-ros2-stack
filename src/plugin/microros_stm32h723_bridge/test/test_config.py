@@ -399,3 +399,28 @@ def test_gravity_compensation_supports_biases_and_hot_reload():
     assert 'torque_biases' in source
     assert 'on_parameters_set' in source
     assert 'add_on_set_parameters_callback' in source
+
+
+def test_trajectory_integral_is_explicit_opt_in_with_independent_bounded_example():
+    import math
+    xacro = (PACKAGE_ROOT / 'urdf/rebotarm.arm.micro_ros.xacro').read_text()
+    launch = (PACKAGE_ROOT / 'launch/stm32h723_arm.launch.py').read_text()
+    assert '<xacro:arg name="trajectory_integral_config" default=""/>' in xacro
+    assert "'trajectory_integral_config', default_value=''" in launch
+    config = yaml.safe_load((PACKAGE_ROOT / 'config/trajectory_integral.example.yaml').read_text())
+    limits = yaml.safe_load((PACKAGE_ROOT / 'config/arm_mit_gains.yaml').read_text())['effort_limits']
+    for key in ('ki', 'max_effort', 'slew_rate'):
+        assert len(config[key]) == 7
+        assert all(math.isfinite(v) and v >= 0 for v in config[key])
+        assert config[key][3:] == [0.] * 4
+    assert all(cap <= limit for cap, limit in zip(config['max_effort'], limits))
+
+
+def test_optional_integral_xacro_omits_empty_hardware_parameter():
+    import xacro
+    path = PACKAGE_ROOT / 'urdf/rebotarm.arm.micro_ros.xacro'
+    default = ET.fromstring(xacro.process_file(str(path)).toxml())
+    assert default.find('.//hardware/param[@name="trajectory_integral_config"]') is None
+    settings = str(PACKAGE_ROOT / 'config/trajectory_integral.example.yaml')
+    enabled = ET.fromstring(xacro.process_file(str(path), mappings={'trajectory_integral_config': settings}).toxml())
+    assert enabled.find('.//hardware/param[@name="trajectory_integral_config"]').text.strip() == settings
