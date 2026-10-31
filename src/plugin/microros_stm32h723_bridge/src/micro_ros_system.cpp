@@ -139,7 +139,6 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
     for (std::size_t i = 0; i < kJointCount; ++i) {
       effort_limits_[i] = effort_node[i].as<double>();
     }
-    load_trajectory_integral(parameter_or(info_, "trajectory_integral_config", ""));
 
     node_ = std::make_shared<rclcpp::Node>("microros_stm32h723_hardware");
     const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
@@ -243,27 +242,19 @@ hardware_interface::return_type MicroRosSystem::perform_command_mode_switch(
   for (const auto & key : stop_interfaces) {
     for (std::size_t i = 0; i < joint_names_.size(); ++i) {
       const auto index = configured_protocol_indices_[i];
-      if (key == joint_names_[i] + "/position") {
-        positions &= ~(1U << index);
-        trajectory_integral_.reset(index);
-      }
+      if (key == joint_names_[i] + "/position") {positions &= ~(1U << index);}
       if (key == joint_names_[i] + "/velocity") {
         velocities &= ~(1U << index);
         command_velocity_[index] = 0.0;
-        trajectory_integral_.reset(index);
       }
     }
   }
   for (const auto & key : start_interfaces) {
     for (std::size_t i = 0; i < joint_names_.size(); ++i) {
       const auto index = configured_protocol_indices_[i];
-      if (key == joint_names_[i] + "/position") {
-        positions |= 1U << index;
-        trajectory_integral_.reset(index);
-      }
+      if (key == joint_names_[i] + "/position") {positions |= 1U << index;}
       if (key == joint_names_[i] + "/velocity") {
         command_velocity_[index] = 0.0;
-        trajectory_integral_.reset(index);
         velocities |= 1U << index;
       }
     }
@@ -275,7 +266,6 @@ hardware_interface::return_type MicroRosSystem::perform_command_mode_switch(
 
 hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_lifecycle::State &)
 {
-  trajectory_integral_.reset();
   std::unique_lock<std::mutex> lock(feedback_mutex_);
   if (!feedback_cv_.wait_for(
       lock, activation_timeout_,
@@ -348,7 +338,7 @@ hardware_interface::return_type MicroRosSystem::read(const rclcpp::Time &, const
   return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, const rclcpp::Duration & period)
+hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, const rclcpp::Duration &)
 {
   if (!active_.load()) {
     return hardware_interface::return_type::OK;
@@ -411,22 +401,9 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     disable_sequence_ = message.sequence;
   }
   const auto & gains = selected_gains();
-  bool integral_feedback_ready = false;
-  if (trajectory_integral_configured_) {
-    std::lock_guard<std::mutex> lock(status_mutex_);
-    integral_feedback_ready = status_.mode == msg::HardwareStatus::MODE_TRACK &&
-      status_.fault_code == 0 &&
-      (status_.active_joint_mask & required_joint_mask_) == required_joint_mask_ &&
-      std::chrono::steady_clock::now() - status_received_at_ <= state_timeout_;
-    if (trajectory_integral_reset_requested_.exchange(false) || !integral_feedback_ready) {
-      trajectory_integral_.reset();
-    }
-  }
-  auto next_integral = trajectory_integral_;
   for (std::size_t i = 0; i < kJointCount; ++i) {
     const bool configured = (configured_joint_mask_ & (1U << i)) != 0U;
     if (!configured || message.mode == msg::JointCommand::MODE_DISABLE) {
-      next_integral.reset(i);
       message.position[i] = 0.0F;
       message.velocity[i] = 0.0F;
       message.kp[i] = 0.0F;
@@ -448,23 +425,11 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     message.kp[i] = static_cast<float>(gains.kp[i]);
     message.kd[i] = static_cast<float>(gains.kd[i]);
     const double requested_effort = command_effort_[i];
-    double effort = std::clamp(requested_effort, -effort_limits_[i], effort_limits_[i]);
-    if (trajectory_integral_configured_) {
-      try {
-        const bool trim_active = integral_feedback_ready && velocity_enabled &&
-          (position_claimed_mask_.load() & (1U << i)) != 0U;
-        effort = next_integral.update(i, trim_active,
-          (targets[i] - state_position_[i]) / position_scales_[i], requested_effort,
-          period.seconds());
-      } catch (const std::exception & error) {
-        RCLCPP_ERROR(node_->get_logger(), "Invalid trajectory integral input: %s", error.what());
-        return hardware_interface::return_type::ERROR;
-      }
-    }
+    const double effort = message.mode == msg::JointCommand::MODE_DISABLE ? 0.0 :
+      std::clamp(requested_effort, -effort_limits_[i], effort_limits_[i]);
     message.effort[i] = static_cast<float>(effort);
   }
   command_publisher_->publish(message);
-  trajectory_integral_ = next_integral;
   return hardware_interface::return_type::OK;
 }
 
@@ -517,14 +482,7 @@ void MicroRosSystem::status_callback(const msg::HardwareStatus::SharedPtr messag
     RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000, "Required STM32 joints are inactive");
   }
   std::lock_guard<std::mutex> lock(status_mutex_);
-  if (message->mode != msg::HardwareStatus::MODE_TRACK || message->fault_code != 0 ||
-    !required_active ||
-    static_cast<int32_t>(message->last_command_sequence - status_.last_command_sequence) < 0)
-  {
-    trajectory_integral_reset_requested_.store(true);
-  }
   status_ = *message;
-  status_received_at_ = std::chrono::steady_clock::now();
   feedback_cv_.notify_all();
 }
 
@@ -596,24 +554,6 @@ bool MicroRosSystem::load_gains(const std::string & path)
   load_group("return", return_gains_);
   load_group("idle", idle_gains_);
   return true;
-}
-
-void MicroRosSystem::load_trajectory_integral(const std::string & path)
-{
-  trajectory_integral_configured_ = false;
-  trajectory_integral_.reset();
-  if (path.empty()) {return;}
-  const auto config = YAML::LoadFile(path);
-  auto values = [&config](const char * key) {
-      TrajectoryIntegral::Values result{};
-      if (!config[key] || !config[key].IsSequence() || config[key].size() != kJointCount) {
-        throw std::runtime_error(std::string("trajectory integral ") + key + " requires 7 values");
-      }
-      for (std::size_t i = 0; i < kJointCount; ++i) {result[i] = config[key][i].as<double>();}
-      return result;
-    };
-  trajectory_integral_.configure(values("ki"), values("max_effort"), values("slew_rate"), effort_limits_);
-  trajectory_integral_configured_ = true;
 }
 
 bool MicroRosSystem::all_finite(const std::array<double, kJointCount> & values) const

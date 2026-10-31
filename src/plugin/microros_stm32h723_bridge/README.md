@@ -353,10 +353,6 @@ another service request. Exit cleanup does not repeat global executable-name
 searches for robot_state_publisher, relay or leader processes. The desktop's
 one-click path performs its own verified cleanup before using `--clean=false`.
 
-## Optional trajectory integral trim (experimental)
-
-An independent `trajectory_integral_config` launch/Xacro argument enables bounded
-integral effort trim only for TRACK joints owning position+velocity. It defaults
-to empty/off; it never changes MIT gains, feedback or the position-start gate.
-The example YAML is for supervised validation, not a calibrated production profile.
-See [holding-error diagnosis and validation](../../../docs/trajectory-hold-integral.md).
+The hardware adapter forwards the controllers' effort through the existing
+effort limits without adding an integral correction. Gravity compensation
+remains the responsibility of the gravity controller.

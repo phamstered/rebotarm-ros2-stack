@@ -16,7 +16,6 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "microros_stm32h723_bridge/msg/hardware_status.hpp"
 #include "microros_stm32h723_bridge/msg/joint_command.hpp"
-#include "microros_stm32h723_bridge/trajectory_integral.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -80,7 +79,6 @@ private:
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void stop_executor();
   bool load_gains(const std::string & path);
-  void load_trajectory_integral(const std::string & path);
   bool all_finite(const std::array<double, kJointCount> & values) const;
   bool configured_positions_differ(
     const std::array<double, kJointCount> & lhs,
@@ -95,9 +93,6 @@ private:
   std::array<double, kJointCount> command_velocity_{};
   std::array<double, kJointCount> command_effort_{};
   std::array<bool, kJointCount> velocity_available_{};
-  TrajectoryIntegral trajectory_integral_;
-  bool trajectory_integral_configured_{false};
-  std::atomic<bool> trajectory_integral_reset_requested_{true};
   std::atomic<uint32_t> velocity_claimed_mask_{0U};
   std::atomic<uint32_t> position_claimed_mask_{0U};
   std::array<double, kJointCount> lower_limits_{};
@@ -117,7 +112,6 @@ private:
   Feedback feedback_;
   std::mutex status_mutex_;
   msg::HardwareStatus status_;
-  std::chrono::steady_clock::time_point status_received_at_{};
 
   std::shared_ptr<rclcpp::Node> node_;
   rclcpp::Publisher<msg::JointCommand>::SharedPtr command_publisher_;
