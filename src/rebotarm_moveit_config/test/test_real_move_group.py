@@ -9,7 +9,7 @@ from unittest.mock import patch
 SOURCE = Path(__file__).resolve().parents[1] / "launch/real_move_group.launch.py"
 
 class RealMoveGroupTests(unittest.TestCase):
-    def test_real_description_and_conservative_execution_contract(self):
+    def test_real_description_and_bounded_execution_contract(self):
         class Builder:
             def __init__(self, *args, **kwargs): pass
             def planning_pipelines(self, **kwargs):
@@ -48,7 +48,7 @@ class RealMoveGroupTests(unittest.TestCase):
         self.assertEqual(set(limits), {f"joint{i}" for i in range(1, 7)})
         for value in limits.values():
             self.assertTrue(value["has_acceleration_limits"])
-            self.assertEqual(value["max_velocity"], .5)
-            self.assertEqual(value["max_acceleration"], .5)
+            self.assertEqual(value["max_velocity"], 1.0)
+            self.assertEqual(value["max_acceleration"], 1.0)
 
 if __name__ == "__main__": unittest.main()

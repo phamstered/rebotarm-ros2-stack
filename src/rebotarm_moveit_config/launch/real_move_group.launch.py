@@ -28,8 +28,8 @@ def generate_launch_description():
     config["robot_description_planning"] = {
         "joint_limits": {
             f"joint{index}": {
-                "has_velocity_limits": True, "max_velocity": 0.5,
-                "has_acceleration_limits": True, "max_acceleration": 0.5,
+                "has_velocity_limits": True, "max_velocity": 1.0,
+                "has_acceleration_limits": True, "max_acceleration": 1.0,
             }
             for index in range(1, 7)
         }
