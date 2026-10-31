@@ -134,11 +134,11 @@ reactivation, emits zero control fields and a fresh sequence on every frame.
 Firmware fault latches are never cleared by these services. A stop timeout must
 preserve the publisher and report the unconfirmed state.
 
-The arm and gripper gain profiles use joint4 RETURN `Kp=45`, `Kd=2`; normal
+The arm and gripper gain profiles use joint3/4 RETURN `Kp=45` (Kd stays 3/2); normal
 TRACK/HOLD gains and effort limits are unchanged. With `Kp=15`, an unobstructed
 near-HOME field test settled around -0.0494 rad, outside the existing 0.03 rad
 zero tolerance; an intermediate `Kp=30` test remained around -0.0349 rad. The RETURN gain provides additional static-error margin without
-widening that safety gate. This is a homing configuration, not a replacement
+widening that safety gate. Joint3 also stalled at -0.03185 rad with Kp=30 during a repeated RETURN, so its RETURN gain uses the same static-error margin. This is a homing configuration, not a replacement
 for checking physical obstruction or gravity/payload calibration. A pending
 RETURN still must not be forcibly bypassed.
 
