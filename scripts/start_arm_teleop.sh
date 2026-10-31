@@ -400,15 +400,39 @@ check_stm32_status() {
         "$active_mask" "$active_mask" "$REQUIRED_ACTIVE_JOINT_MASK"
 }
 
+arm_controller_domain() {
+    local environment
+    environment=$(tr '\0' '\n' < "/proc/$1/environ") || return 1
+    sed -n 's/^ROS_DOMAIN_ID=//p' <<<"$environment"
+}
+
+arm_domain_controllers() {
+    local pid domain
+    for pid in $(pgrep -f '^/opt/ros/humble/lib/[c]ontroller_manager/ros2_control_node( |$)'); do
+        domain=$(arm_controller_domain "$pid") || return 1
+        [[ "${domain:-0}" == "${ROS_DOMAIN_ID:-0}" ]] || continue
+        printf '%s\n' "$pid"
+    done
+    return 0
+}
+
 safe_stop_ros2_control() {
     local response=""
     local status_sample=""
     local stop_deadline=0
     local status_mode=""
+    local status_fault="" pid domain group found=false
 
-    if ! pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
-        return 0
-    fi
+    for pid in $(pgrep -f '^/opt/ros/humble/lib/[c]ontroller_manager/ros2_control_node( |$)'); do
+        domain=$(arm_controller_domain "$pid") || return 1
+        [[ "${domain:-0}" == "${ROS_DOMAIN_ID:-0}" ]] || continue
+        if [[ -n "${CONTROLLER_PID:-}" ]]; then
+            group=$(ps -p "$pid" -o pgid= | tr -d ' ') || return 1
+            [[ "$group" == "$CONTROLLER_PID" ]] || continue
+        fi
+        found=true
+    done
+    [[ "$found" == true ]] || return 0
 
     response="$(
         timeout 8 ros2 service call \
@@ -424,10 +448,11 @@ safe_stop_ros2_control() {
     stop_deadline=$((SECONDS + 10))
     while (( SECONDS < stop_deadline )); do
         status_sample="$(
-            timeout 3 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon 2>/dev/null || true
+            timeout 3 ros2 topic echo /stm32/status microros_stm32h723_bridge/msg/HardwareStatus --once --no-daemon --qos-reliability best_effort --qos-durability volatile 2>/dev/null || true
         )"
         status_mode="$(awk '/^mode:/ {print $2; exit}' <<<"$status_sample")"
-        if [[ "$status_mode" == "3" ]]; then
+        status_fault="$(awk '/^fault_code:/ {print $2; exit}' <<<"$status_sample")"
+        if [[ "$status_mode" == "3" && "$status_fault" == "0" ]]; then
             pass "STM32 confirmed MODE_DISABLE before ros2_control shutdown."
             return 0
         fi
@@ -504,27 +529,14 @@ cleanup() {
     if [[ -n "$RELAY_PID" ]]; then
         echo "Stopping teleoperation relay started by this script."
         stop_process_group "teleoperation relay" "$RELAY_PID"
-        stop_matching_processes \
-            "arm relay launch" \
-            "ros2 launch joint_state_relay relay_to_microros_arm.launch.py"
-        stop_matching_processes "joint_state_relay node" "/joint_state_relay/relay_node"
     fi
     if [[ -n "$LEADER_PID" ]]; then
         echo "Stopping leader robo_driver started by this script."
         stop_process_group "leader robo_driver" "$LEADER_PID"
-        stop_matching_processes "leader robo_driver executable" "/robo_driver/driver"
-        stop_matching_processes "leader ros2 run wrapper" "ros2 run robo_driver driver"
     fi
     if [[ -n "$CONTROLLER_PID" ]]; then
         echo "Stopping ros2_control launch started by this script."
         stop_process_group "arm ros2_control" "$CONTROLLER_PID"
-        stop_matching_processes \
-            "arm ros2_control launch" \
-            "ros2 launch microros_stm32h723_bridge stm32h723_arm.launch.py"
-        stop_matching_processes "ros2_control_node" "/controller_manager/ros2_control_node"
-        stop_matching_processes \
-            "follower robot_state_publisher" \
-            "/robot_state_publisher/robot_state_publisher"
     fi
 }
 trap cleanup EXIT INT TERM
@@ -619,8 +631,12 @@ check_topic_once /stm32/joint_states "$STM32_STATE_TIMEOUT"
 pass "/stm32/joint_states is publishing."
 
 stage "Controller Manager and controller states"
-if pgrep -f '/controller_manager/ros2_control_node' >/dev/null 2>&1; then
-    echo "Using the existing ros2_control_node process."
+existing_controllers=$(arm_domain_controllers) || {
+    echo "ERROR: Cannot determine ControllerManager ROS domain; refusing startup." >&2
+    exit 1
+}
+if [[ -n "$existing_controllers" ]]; then
+    echo "Using existing ros2_control_node in ROS_DOMAIN_ID=$ROS_DOMAIN_ID (PID $existing_controllers)."
 elif [[ "$START_CONTROLLER" == "true" ]]; then
     echo "Starting STM32H723 arm ros2_control (gripper=$ENABLE_GRIPPER, calibration=$ENABLE_JOINT4_CALIBRATION)."
     setsid ros2 launch microros_stm32h723_bridge \

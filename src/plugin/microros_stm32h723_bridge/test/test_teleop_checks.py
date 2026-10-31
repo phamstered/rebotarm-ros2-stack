@@ -68,6 +68,7 @@ def test_signal_cleanup_reaps_owned_groups_only_after_safe_stop(tmp_path, safe_s
     script = tmp_path / 'supervisor.sh'
     script.write_text('set -euxo pipefail\n' + functions + '''
 pgrep() { return 1; }
+stop_matching_processes() { echo GLOBAL_SCAN_FORBIDDEN; return 99; }
 ''' + safe_stop_mock + '\n'.join(f'setsid {child} & {name}=$!' for name in (
         'RELAY_PID', 'LEADER_PID', 'CONTROLLER_PID')) + '''
 printf '%s %s %s' "$RELAY_PID" "$LEADER_PID" "$CONTROLLER_PID" > "$1/children"
@@ -86,6 +87,7 @@ wait "$RELAY_PID"
             time.sleep(0.2)
             process.send_signal(signal.SIGTERM)
             process.wait(timeout=15)
+            assert 'GLOBAL_SCAN_FORBIDDEN' not in (tmp_path / 'trace').read_text()
             survivors = []
             for pid in children:
                 try:
@@ -107,3 +109,57 @@ wait "$RELAY_PID"
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
+
+
+@pytest.mark.parametrize('domain,group,fault,expected,called', [
+    ('229', '100', '0', 0, False),
+    ('0', '999', '0', 0, False),
+    ('0', '100', '0', 0, True),
+    ('0', '100', '11', 1, True),
+    ('unreadable', '100', '0', 1, False),
+])
+def test_safe_stop_ignores_foreign_managers_and_requires_fault_free_disable(
+        tmp_path, domain, group, fault, expected, called):
+    source = SCRIPT.read_text()
+    function = 'safe_stop_ros2_control() {' + source.split('safe_stop_ros2_control() {', 1)[1].split('stop_matching_processes() {', 1)[0]
+    mocks = r'''
+        ROS_DOMAIN_ID=0; CONTROLLER_PID=100
+        pgrep() { echo 123; }
+        arm_controller_domain() { [[ "$DOMAIN" != unreadable ]] || return 1; echo "$DOMAIN"; }
+        ps() { echo "$GROUP"; }
+        timeout() { shift; "$@"; }
+        sleep() { SECONDS=$((SECONDS+1)); }
+        pass() { :; }
+        ros2() {
+            if [[ "$1" == service ]]; then echo service >> "$ROOT/calls"; echo 'success=True';
+            else printf 'mode: 3\nfault_code: %s\n' "$FAULT"; fi
+        }
+    '''
+    result = subprocess.run(['bash', '-c', mocks + function + '\nsafe_stop_ros2_control'],
+                            env=dict(os.environ, ROOT=str(tmp_path), DOMAIN=domain, GROUP=group, FAULT=fault),
+                            text=True, capture_output=True, timeout=5)
+    assert result.returncode == expected, result.stderr
+    assert (tmp_path / 'calls').exists() == called
+
+
+@pytest.mark.parametrize('domain,expected,pids', [
+    ('229', 0, ''), ('0', 0, '123'), ('', 0, '123'),
+    ('unreadable', 1, ''),
+])
+def test_startup_reuses_only_current_domain_manager(domain, expected, pids):
+    source = SCRIPT.read_text()
+    function = 'arm_domain_controllers() {' + source.split(
+        'arm_domain_controllers() {', 1)[1].split('safe_stop_ros2_control() {', 1)[0]
+    mocks = r'''
+        ROS_DOMAIN_ID=0
+        pgrep() { echo 123; }
+        arm_controller_domain() { [[ "$DOMAIN" != unreadable ]] || return 1; echo "$DOMAIN"; }
+    '''
+    result = subprocess.run(['bash', '-c', mocks + function + '\narm_domain_controllers'],
+                            env=dict(os.environ, DOMAIN=domain),
+                            text=True, capture_output=True, timeout=5)
+    assert result.returncode == expected, result.stderr
+    assert result.stdout.strip() == pids
+    startup = source.split('stage "Controller Manager and controller states"', 1)[1]
+    assert 'existing_controllers=$(arm_domain_controllers) || {' in startup
+    assert "if pgrep -f '/controller_manager/ros2_control_node'" not in startup

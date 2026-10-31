@@ -134,6 +134,14 @@ reactivation, emits zero control fields and a fresh sequence on every frame.
 Firmware fault latches are never cleared by these services. A stop timeout must
 preserve the publisher and report the unconfirmed state.
 
+The arm and gripper gain profiles use joint4 RETURN `Kp=45`, `Kd=2`; normal
+TRACK/HOLD gains and effort limits are unchanged. With `Kp=15`, an unobstructed
+near-HOME field test settled around -0.0494 rad, outside the existing 0.03 rad
+zero tolerance; an intermediate `Kp=30` test remained around -0.0349 rad. The RETURN gain provides additional static-error margin without
+widening that safety gate. This is a homing configuration, not a replacement
+for checking physical obstruction or gravity/payload calibration. A pending
+RETURN still must not be forcibly bypassed.
+
 ## Single-motor bring-up
 
 For the first hardware test, configure firmware with `active_joint_mask=0x01` and connect only `joint1`. Do not launch the seven-joint hardware plugin; run the restricted topic-level test instead:
@@ -334,3 +342,13 @@ ros2 control switch_controllers \
   --deactivate arm_teleop_controller \
   --activate arm_trajectory_controller --strict
 ```
+
+Startup checks the actual ControllerManager process ROS domain before reusing it; a manager in another domain does not suppress this domain’s launch. An unreadable domain blocks startup.
+
+Supervisor exit cleanup stops only the relay, leader and controller process
+groups it started. Its safe-stop probe is limited to the selected ROS domain
+and, during exit, its controller launch group. Once the desktop has already
+confirmed DISABLE and stopped that manager, unrelated managers do not trigger
+another service request. Exit cleanup does not repeat global executable-name
+searches for robot_state_publisher, relay or leader processes. The desktop's
+one-click path performs its own verified cleanup before using `--clean=false`.

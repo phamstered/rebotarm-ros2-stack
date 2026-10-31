@@ -1,7 +1,9 @@
-# Arm joint1-6 RETURN/HOLD gains match the legacy follower driver; TRACK is tuned separately.
+# Arm HOLD gains match the legacy follower driver; TRACK is tuned separately.
+# Joint4 RETURN Kp=45 covers the observed near-HOME static residual without
+# widening zero_tolerance or changing effort limits / normal TRACK gains.
 # The inactive gripper protocol slot remains zero.
 return:
-  kp: [30.0, 30.0, 30.0, 15.0, 15.0, 15.0, 0.0]
+  kp: [30.0, 30.0, 30.0, 45.0, 15.0, 15.0, 0.0]
   kd: [3.0, 3.0, 3.0, 2.0, 2.0, 2.0, 0.0]
 hold:
   kp: [20.0, 20.0, 20.0, 10.0, 10.0, 10.0, 0.0]
