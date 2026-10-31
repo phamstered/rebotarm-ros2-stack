@@ -75,7 +75,7 @@ colcon test && colcon test-result --verbose
 ros2 launch rebotarm_moveit_config real_move_group.launch.py
 ```
 
-该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 0.5 rad/s、0.5 rad/s²；上位机点位运动使用 0.2 缩放。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
+该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 1 rad/s、1 rad/s²；配套上位机请求使用 1.0 缩放。此处是规划上限，不会修改固件限幅、MIT 增益或重力补偿。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
 
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 

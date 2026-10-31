@@ -74,14 +74,21 @@ def main():
         q[:]=valid
         goal=list(valid);goal[0]=max(limits[0][0]+.01,min(limits[0][1]-.01,goal[0]+.02))
         request=GetMotionPlan.Request();request.motion_plan_request.group_name="arm";request.motion_plan_request.pipeline_id="ompl";request.motion_plan_request.allowed_planning_time=5.;request.motion_plan_request.num_planning_attempts=1
-        request.motion_plan_request.max_velocity_scaling_factor=.2;request.motion_plan_request.max_acceleration_scaling_factor=.2;request.motion_plan_request.start_state=state(valid)
+        request.motion_plan_request.max_velocity_scaling_factor=1.;request.motion_plan_request.max_acceleration_scaling_factor=1.;request.motion_plan_request.start_state=state(valid)
         constraints=Constraints()
         for name,value in zip(names,goal):
             c=JointConstraint();c.joint_name=name;c.position=value;c.tolerance_above=.005;c.tolerance_below=.005;c.weight=1.;constraints.joint_constraints.append(c)
         request.motion_plan_request.goal_constraints=[constraints]
         result=call(planner,request).motion_plan_response
         assert result.error_code.val==1,result.error_code.val
-        assert len(result.trajectory.joint_trajectory.points)>1
+        points=result.trajectory.joint_trajectory.points
+        assert len(points)>1
+        previous=-1
+        for point in points:
+            stamp=point.time_from_start.sec*1000000000+point.time_from_start.nanosec
+            assert stamp>previous;previous=stamp
+            assert len(point.velocities)==6 and all(abs(v)<=1.+1e-6 for v in point.velocities)
+            assert len(point.accelerations)==6 and all(abs(a)<=1.+1e-6 for a in point.accelerations)
         obstacle=CollisionObject();obstacle.header.frame_id="base_link";obstacle.id="isolated_blocking_box";obstacle.operation=CollisionObject.ADD
         box=SolidPrimitive();box.type=SolidPrimitive.BOX;box.dimensions=[2.,2.,2.];pose=Pose();pose.orientation.w=1.;obstacle.primitives=[box];obstacle.primitive_poses=[pose]
         update=ApplyPlanningScene.Request();update.scene.is_diff=True;update.scene.robot_state.is_diff=True;update.scene.world.collision_objects=[obstacle]
