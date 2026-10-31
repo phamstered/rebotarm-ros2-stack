@@ -18,6 +18,7 @@ def generate_launch_description():
     default_gains_file = PathJoinSubstitution(
         [package_share, 'config', 'arm_mit_gains.yaml'])
     gains_file = LaunchConfiguration('gains_file')
+    trajectory_integral_config = LaunchConfiguration('trajectory_integral_config')
     use_sim_time = LaunchConfiguration('use_sim_time')
     state_only = LaunchConfiguration('state_only')
     position_controller = LaunchConfiguration('position_controller')
@@ -73,11 +74,16 @@ def generate_launch_description():
             FindExecutable(name='xacro'), ' ', xacro_file,
             ' gains_file:=', gains_file,
             ' enable_gripper:=', enable_gripper,
+            ' trajectory_integral_config:="', trajectory_integral_config, '"',
         ])
     }
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument(
+            'trajectory_integral_config', default_value='',
+            description='Experimental opt-in integral settings; empty disables trim.',
+        ),
         DeclareLaunchArgument(
             'gains_file',
             default_value=default_gains_file,

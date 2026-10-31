@@ -151,6 +151,8 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_stop_lifecycle hardware_interface rclcpp rclcpp_lifecycle sensor_msgs std_srvs)
   ament_add_gtest(test_gravity_identification_fit test/test_gravity_identification_fit.cpp)
   target_include_directories(test_gravity_identification_fit PRIVATE include)
+  ament_add_gtest(test_trajectory_integral test/test_trajectory_integral.cpp)
+  target_include_directories(test_trajectory_integral PRIVATE include)
 endif()
 
 ament_export_include_directories(include)

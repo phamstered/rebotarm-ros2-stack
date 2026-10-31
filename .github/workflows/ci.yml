@@ -107,9 +107,11 @@ jobs:
 
       - name: Isolated real JTC velocity pipeline (mock MCU only)
         run: |
+          set -e
           source "/opt/ros/${ROS_DISTRO}/setup.bash"
           source install/setup.bash
           ROS_DOMAIN_ID=229 python3 src/plugin/microros_stm32h723_bridge/test/smoke_trajectory_velocity.py
+          ROS_DOMAIN_ID=229 python3 src/plugin/microros_stm32h723_bridge/test/smoke_trajectory_velocity.py --integral
 
       - name: Upload pytest / colcon logs on failure
         if: failure()
