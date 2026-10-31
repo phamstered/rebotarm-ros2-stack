@@ -112,3 +112,10 @@ micro-ROS 一键守卫启动：`./scripts/start_arm_teleop.sh`（九段自检：
 
 外部推理发布 `/vla/joint_chunk`（`VlaJointChunk`）→ `VlaPositionController` 写 position，可选 `gravity_compensation_controller` 写 effort → `MicroRosSystem` 合成 MIT。不要把直接写 `/stm32/joint_commands` 作为主路径。详见 [VLA integration](./vla-integration) 与 [VLA 使用指南](./vla-usage)。
 
+
+
+### RETURN 收敛与 supervisor 退出
+
+六轴与带夹爪的 arm MIT profile 将 joint4 RETURN Kp 设为 45，Kd 保持 2；TRACK/HOLD 增益、effort limits 与 `zero_tolerance=0.03 rad` 均不变。此次修正针对当前负载在 HOME 附近的静态残差：Jetson / ROS_DOMAIN_ID=0 真机上，Kp=15 时 joint4 约停在 −0.0494 rad，Kp=30 时约 −0.0349 rad，均不能完成正常 RETURN；Kp=45 时约 −0.0242 rad，正常 RETURN→DISABLE 成功。后续 Teleop↔Trajectory 启停也通过。此结果不代表全工作空间或不同负载已验证，也不替代重力模型标定。
+
+`start_arm_teleop.sh` 的退出 trap 只停止本次创建的 relay、leader 与控制器进程组，不再按全局可执行文件名称清理其他实例。启动时仅复用当前 ROS 域的 ControllerManager，不能把隔离域或其他机器人域的实例当作本域服务。safe-stop 检查当前 ROS 域，退出时还核对控制器所属启动组，并要求新鲜 HardwareStatus 的 `mode=DISABLE, fault_code=0` 后才关闭控制器。桌面端已经执行同域安全清理后使用 `--clean=false`；直接命令行 `--clean=true` 的历史启动清理行为仍存在。

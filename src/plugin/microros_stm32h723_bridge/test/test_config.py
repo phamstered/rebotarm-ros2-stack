@@ -252,7 +252,7 @@ def test_bringup_gains_match_configured_profiles_for_joints_1_to_6():
     config = yaml.safe_load(
         (PACKAGE_ROOT / 'config' / 'arm_mit_gains.yaml').read_text())
     expected_gains = {
-        'return': ([30.0] * 3 + [15.0] * 3, [3.0] * 3 + [2.0] * 3),
+        'return': ([30.0] * 3 + [45.0] + [15.0] * 2, [3.0] * 3 + [2.0] * 3),
         'hold': ([20.0] * 3 + [10.0] * 3, [2.0] * 3 + [1.5] * 3),
         'track': ([40.0] * 3 + [15.0] * 3, [3.0] * 3 + [1.5] * 3),
         'idle': ([0.0] * 6, [1.0] * 6),
@@ -302,6 +302,23 @@ def test_gripper_gain_profile_never_returns_to_closed_position():
 
     hardware_source = (PACKAGE_ROOT / 'src' / 'micro_ros_system.cpp').read_text()
     assert 'std::abs(return_gains_.kp[index]) <= 1e-9' in hardware_source
+
+
+def test_return_covers_observed_joint4_static_residual_inside_original_tolerance():
+    # Field regression: Kp=15 settled at -0.0494 rad; Kp=30 at -0.0349
+    # rad without obstruction/faults (~1.05 N*m maximum observed residual). This static budget is not a dynamic model;
+    # real RETURN -> DISABLE validation is still required on the arm.
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring((PACKAGE_ROOT / 'urdf' / 'rebotarm.arm.micro_ros.xacro').read_text())
+    tolerance = float(next(p.text for p in root.iter('param') if p.attrib.get('name') == 'zero_tolerance'))
+    assert tolerance == 0.03
+    for filename in ('arm_mit_gains.yaml', 'arm_gripper_mit_gains.yaml'):
+        config = yaml.safe_load((PACKAGE_ROOT / 'config' / filename).read_text())
+        assert 1.1 / config['return']['kp'][3] < tolerance
+        assert config['return']['kd'][3] == 2.0
+        assert config['effort_limits'][3] <= 6.0
+        assert config['track']['kp'][3] == 15.0
+        assert config['hold']['kp'][3] == 10.0
 
 def test_vla_joint_chunk_message_is_simple():
     definition = (PACKAGE_ROOT / 'msg' / 'VlaJointChunk.msg').read_text()
