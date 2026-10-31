@@ -2,8 +2,6 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm_arm">
   <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/arm_mit_gains.yaml"/>
   <xacro:arg name="enable_gripper" default="false"/>
-  <xacro:arg name="trajectory_integral_config" default=""/>
-  <xacro:property name="trajectory_integral_config_path" value="$(arg trajectory_integral_config)"/>
 
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
 
@@ -24,9 +22,6 @@
         <param name="required_joint_mask">0x3F</param>
       </xacro:unless>
       <param name="gains_file">$(arg gains_file)</param>
-      <xacro:if value="${trajectory_integral_config_path != ''}">
-        <param name="trajectory_integral_config">${trajectory_integral_config_path}</param>
-      </xacro:if>
       <param name="gripper_position_scale">-0.008612826752</param>
       <param name="gripper_position_offset">0.004282757541</param>
     </hardware>

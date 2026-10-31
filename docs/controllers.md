@@ -122,7 +122,3 @@ micro-ROS 一键守卫启动：`./scripts/start_arm_teleop.sh`（九段自检：
 
 
 重复验收边界：随后的一次正式路径 RETURN 在 joint3≈−0.03185 rad 停住（fault=0）。实验将 joint3 RETURN Kp 从 30 改为 45、75 后，位置仍固定约 −0.03376 rad，虽然反馈力矩随之变化；这两项实验未作为默认配置发布，joint3 保持 Kp=30。已明确区分正常 RETURN 成功与现场授权的 DISABLE 恢复，不能把后者当作回零通过。此状态需要确认 joint3 机械限位/接触与零位，未确认前保留 0.03 rad 门禁、停止进一步增加驱动力。该现场问题单独跟踪于 #41。
-
-### 轨迹保持静差
-
-可通过显式 `trajectory_integral_config` 选择实验性的有界积分 effort 补偿，默认关闭，不改变既有增益或 0.005 rad 起点门禁。配置、启用边界和隔离/现场验证顺序见 [轨迹保持积分说明](./trajectory-hold-integral)。
