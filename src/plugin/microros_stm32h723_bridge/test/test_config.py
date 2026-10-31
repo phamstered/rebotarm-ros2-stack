@@ -114,7 +114,7 @@ def test_bringup_profile_exports_separate_position_and_effort_interfaces():
     assert int(parameters['state_timeout_ms']) >= 500
     for joint in ros2_control.findall('joint'):
         assert [interface.attrib['name'] for interface in
-                joint.findall('command_interface')] == ['position', 'effort']
+                joint.findall('command_interface')] == ['position', 'effort', 'velocity']
 
 
 def test_bringup_controllers_claim_joints_1_to_6():
@@ -123,6 +123,10 @@ def test_bringup_controllers_claim_joints_1_to_6():
     expected_joints = [f'joint{i}' for i in range(1, 7)]
     assert config['arm_trajectory_controller']['ros__parameters'][
         'joints'] == expected_joints
+    assert config['arm_trajectory_controller']['ros__parameters'][
+        'command_interfaces'] == ['position', 'velocity']
+    gripper = ET.parse(PACKAGE_ROOT / 'urdf' / 'rebotarm.arm.micro_ros.xacro').getroot().find('.//joint[@name="gripper_finger_left_joint"]')
+    assert [item.attrib['name'] for item in gripper.findall('command_interface')] == ['position', 'effort']
     assert config['arm_trajectory_controller']['ros__parameters'][
         'allow_partial_joints_goal'] is True
     manager = config['controller_manager']['ros__parameters']

@@ -36,6 +36,12 @@ public:
     const hardware_interface::HardwareInfo & info) override;
   std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
   std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
+  hardware_interface::return_type prepare_command_mode_switch(
+    const std::vector<std::string> & start_interfaces,
+    const std::vector<std::string> & stop_interfaces) override;
+  hardware_interface::return_type perform_command_mode_switch(
+    const std::vector<std::string> & start_interfaces,
+    const std::vector<std::string> & stop_interfaces) override;
   hardware_interface::CallbackReturn on_activate(
     const rclcpp_lifecycle::State & previous_state) override;
   hardware_interface::CallbackReturn on_deactivate(
@@ -86,6 +92,9 @@ private:
   std::array<double, kJointCount> command_position_{};
   std::array<double, kJointCount> command_velocity_{};
   std::array<double, kJointCount> command_effort_{};
+  std::array<bool, kJointCount> velocity_available_{};
+  std::atomic<uint32_t> velocity_claimed_mask_{0U};
+  std::atomic<uint32_t> position_claimed_mask_{0U};
   std::array<double, kJointCount> lower_limits_{};
   std::array<double, kJointCount> upper_limits_{};
   std::array<double, kJointCount> effort_limits_{};

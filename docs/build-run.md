@@ -157,3 +157,17 @@ ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_plann
 ```
 
 测试启动自己的 move_group，只调用状态有效性与规划服务，不发送执行目标；退出时清理临时进程。
+
+## 真机轨迹速度前馈与启动连续性
+
+真机 arm profile 的 joint1–joint6 导出 position、effort、velocity 命令接口；`arm_trajectory_controller` 必须认领 position+velocity，保留独立重力 effort 控制器。JTC 插值速度仅在 TRACK 且该接口已认领时发送到 STM32。Teleop/VLA/夹爪的位置控制保持原行为；velocity 接口停止/重新启动时清零残值，HOLD/RETURN/DISABLE 的目标速度恒为 0。旧 position+effort profile 仍兼容，不会从位置差分猜测速度。
+
+更新插件、xacro 和 arm_controllers.yaml 后，需要按既有安全停机流程重启控制栈并重新激活 JTC，仅编译不改变运行中的接口。不要在机械臂维持输出时直接替换/重启进程。与 Desk 的启动连续性门禁配对使用：参考与实测位置大静差会拒绝新点位，不伪造实际起点、不放宽碰撞/起点校验。当前增益与重力模型参数未自动改变；是否改善低速黏滑须用相同点位、负载和监控采集复核。
+
+软件链路隔离验证（仅模拟 MCU，禁止生产 Domain）：
+
+```bash
+ROS_DOMAIN_ID=229 python3 src/plugin/microros_stm32h723_bridge/test/smoke_trajectory_velocity.py
+```
+
+该测试启动自己的 mock STM32 与真实 JTC/硬件插件，确认速度非零、切回 Teleop 清零、重新激活无残值及 DISABLE 清零；退出仅清理自建进程。隔离测试通过不代表真机振动已经消除。
