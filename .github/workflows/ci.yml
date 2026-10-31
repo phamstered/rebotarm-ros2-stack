@@ -105,6 +105,12 @@ jobs:
             --event-handlers console_direct+
           colcon test-result --verbose
 
+      - name: Isolated real JTC velocity pipeline (mock MCU only)
+        run: |
+          source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          source install/setup.bash
+          ROS_DOMAIN_ID=229 python3 src/plugin/microros_stm32h723_bridge/test/smoke_trajectory_velocity.py
+
       - name: Upload pytest / colcon logs on failure
         if: failure()
         uses: actions/upload-artifact@v4

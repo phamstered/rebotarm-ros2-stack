@@ -47,7 +47,7 @@ controller_manager @ 100 Hz
         │
         ▼
 MicroRosSystem.read/write
-  合成 MIT：position + kp/kd(模式) + effort
+  合成 MIT：position + velocity（仅轨迹接口持有且 TRACK）+ kp/kd(模式) + effort
         │  JointCommand / JointState / HardwareStatus
         ▼
 micro-ros-agent (serial, 常由 systemd 托管)
