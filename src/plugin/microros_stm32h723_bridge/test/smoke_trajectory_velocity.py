@@ -22,6 +22,7 @@ from microros_stm32h723_bridge.msg import JointCommand
 from std_srvs.srv import Trigger
 from trajectory_msgs.msg import JointTrajectoryPoint
 
+gripper_enabled = os.environ.get('GRIPPER_SMOKE') == '1'
 rclpy.init()
 node = rclpy.create_node('isolated_velocity_smoke')
 messages = []
@@ -62,9 +63,12 @@ try:
             log = open(Path(tmp)/name, 'w+'); logs.append(log)
             process = subprocess.Popen(arguments, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
             owned.append(process)
-        launch(['ros2', 'run', 'microros_stm32h723_bridge', 'mock_stm32_node.py', '--ros-args', '-p', 'active_joint_mask:=63'], 'mock.log')
+        launch(['ros2', 'run', 'microros_stm32h723_bridge', 'mock_stm32_node.py', '--ros-args', '-p', 'active_joint_mask:=' + ('127' if gripper_enabled else '63')], 'mock.log')
         control_args = ['ros2', 'launch', 'microros_stm32h723_bridge', 'stm32h723_arm.launch.py',
-                'position_controller:=trajectory', 'enable_gravity_controller:=false', 'enable_gripper:=false']
+                'position_controller:=trajectory', 'enable_gravity_controller:=false', 'enable_gripper:=' + str(gripper_enabled).lower()]
+        if gripper_enabled:
+            from ament_index_python.packages import get_package_share_directory
+            control_args.append('gains_file:=' + str(Path(get_package_share_directory('microros_stm32h723_bridge')) / 'config/arm_gripper_mit_gains.yaml'))
         launch(control_args, 'control.log')
         end = time.monotonic()+35
         while time.monotonic() < end:
@@ -94,6 +98,31 @@ try:
         assert max(abs(float(m.velocity[1])) for m in during)>.02
         assert all(float(m.velocity[6])==0. for m in during)
         assert all(all(float(e)==0. for e in m.effort) for m in during), 'unexpected effort with gravity disabled'
+        if gripper_enabled:
+            response = request('/controller_manager/list_controllers', ListControllers, ListControllers.Request())
+            gripper_controller = next(c for c in response.controller if c.name == 'gripper_trajectory_controller')
+            assert gripper_controller.state == 'active'
+            assert set(gripper_controller.claimed_interfaces) == {
+                'gripper_finger_left_joint/position', 'gripper_finger_left_joint/velocity'}
+            gripper_action = ActionClient(node, FollowJointTrajectory, '/gripper_trajectory_controller/follow_joint_trajectory')
+            assert gripper_action.wait_for_server(timeout_sec=10)
+            gripper_goal = FollowJointTrajectory.Goal()
+            gripper_goal.trajectory.joint_names = ['gripper_finger_left_joint']
+            for stamp, position in [(.1, .004282757541), (2.1, .014282757541)]:
+                point = JointTrajectoryPoint(); point.positions = [position]; point.velocities = [0.]
+                point.time_from_start.sec = int(stamp); point.time_from_start.nanosec = round((stamp-int(stamp))*1e9)
+                gripper_goal.trajectory.points.append(point)
+            begin = time.monotonic()
+            accepted = gripper_action.send_goal_async(gripper_goal)
+            rclpy.spin_until_future_complete(node, accepted, timeout_sec=5)
+            assert accepted.done() and accepted.result().accepted
+            completed = accepted.result().get_result_async()
+            rclpy.spin_until_future_complete(node, completed, timeout_sec=10)
+            assert completed.done() and completed.result().result.error_code == 0
+            gripper_commands = [m for t, m in messages if t >= begin]
+            assert any(float(m.velocity[6]) < -.1 for m in gripper_commands), 'metre/s opening was not converted to negative raw velocity'
+            assert abs(float(gripper_commands[-1].position[6]) - (.014282757541-.004282757541)/-.008612826752) < .001
+            print('PASS calibrated gripper JTC position+velocity -> raw MCU units')
         switch(['arm_teleop_controller'], ['arm_trajectory_controller'])
         begin=time.monotonic();spin(.6)
         after=[m for t,m in messages if t>begin+.1]

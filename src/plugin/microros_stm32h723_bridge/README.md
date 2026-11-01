@@ -356,3 +356,46 @@ one-click path performs its own verified cleanup before using `--clean=false`.
 The hardware adapter forwards the controllers' effort through the existing
 effort limits without adding an integral correction. Gravity compensation
 remains the responsibility of the gravity controller.
+
+## Robot View gripper trajectories
+
+The gripper is opt-in and remains a separate ros2_control controller from the
+six-axis arm. Start the calibrated trajectory path with:
+
+```bash
+./scripts/start_arm_teleop.sh --position-controller=trajectory --gripper=true --gravity=true --start-leader=false
+ros2 launch rebotarm_moveit_config real_move_group.launch.py enable_gripper:=true
+```
+
+`--gripper=true` requires the measured calibration and STM32 enable bit `0x40`;
+it uses the existing gripper gain profile without changing gains. Trajectory
+mode activates only `gripper_trajectory_controller`; teleop mode activates only
+`gripper_teleop_controller`. Both own the same position interface, so
+ros2_control refuses concurrent ownership. The gripper trajectory additionally
+claims velocity for MIT feed-forward. Six-axis startup is unchanged when the
+flag is omitted. VLA's arm controller cannot coexist with arm trajectory control.
+
+The ROS gripper target is `gripper_finger_left_joint` in **metres of single-finger
+travel**, not raw actuator radians or the full distance between fingers. The
+right finger remains URDF mimic. The current measured range is 0–0.05 m;
+MoveIt bounds it to 0.02 m/s and 0.04 m/s². Its node exposes the calibration read
+from the expanded hardware xacro as `debug_desk.gripper_position_scale`,
+`gripper_position_offset`, `gripper_lower`, and `gripper_upper` (all with the
+`debug_desk.` prefix) for the Bridge's raw-feedback verification.
+
+MoveIt groups `gripper` and `arm_with_gripper` accept joint targets; `arm` keeps
+its six-axis IK and HOME. A joint goal for `arm_with_gripper` produces one plan
+and coordinates the arm and gripper FollowJointTrajectory controllers. The
+real MoveIt launch never starts or switches controllers. Without
+`enable_gripper:=true`, its controller mapping remains arm-only.
+
+Robot state publisher consumes `/robot_feedback/joint_states`, a read-only
+conversion of live STM32 feedback. This keeps gripper TF in metres while
+avoiding stale ros2_control feedback after hardware deactivation. State-only
+mode still publishes its public `/joint_states` relay.
+
+Position control does not detect a successful grasp: obstruction or a missed
+target must be reported as failure, not interpreted as grasp completion.
+Automated tests use configuration checks or isolated ROS domains and never
+move a physical gripper. Hardware trajectory/stop validation remains required
+before production use.
