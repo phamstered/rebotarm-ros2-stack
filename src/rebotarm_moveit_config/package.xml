@@ -46,6 +46,13 @@
   <!-- 机器人描述来源 -->
   <exec_depend>rebotarm_gazebo</exec_depend>                <!-- URDF + mesh 文件 -->
 
+  <test_depend>rclpy</test_depend>
+  <test_depend>moveit_msgs</test_depend>
+  <test_depend>sensor_msgs</test_depend>
+  <test_depend>geometry_msgs</test_depend>
+  <test_depend>shape_msgs</test_depend>
+  <test_depend>python3-yaml</test_depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

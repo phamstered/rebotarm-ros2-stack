@@ -119,6 +119,13 @@ jobs:
           source install/setup.bash
           GRIPPER_SMOKE=1 ROS_DOMAIN_ID=230 python3 src/plugin/microros_stm32h723_bridge/test/smoke_trajectory_velocity.py
 
+      - name: Isolated MoveIt full-pose and combined gripper planning (no execution)
+        run: |
+          set -e
+          source "/opt/ros/${ROS_DISTRO}/setup.bash"
+          source install/setup.bash
+          ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
+
       - name: Upload pytest / colcon logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -127,4 +134,5 @@ jobs:
           path: |
             log/
             pytest-*.xml
+            /tmp/codex-real-moveit-planning.log
           if-no-files-found: ignore
