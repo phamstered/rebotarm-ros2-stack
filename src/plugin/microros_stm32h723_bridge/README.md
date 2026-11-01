@@ -399,3 +399,32 @@ target must be reported as failure, not interpreted as grasp completion.
 Automated tests use configuration checks or isolated ROS domains and never
 move a physical gripper. Hardware trajectory/stop validation remains required
 before production use.
+
+
+### Full TCP pose planning validation
+
+The existing flat seven-joint `arm_with_gripper` group also supports a full
+`link6` position + orientation goal combined with a calibrated gripper joint
+goal. MoveIt Humble discovers the `arm` KDL allocator by joint-set inclusion,
+and combines its IK constraint sampler with the gripper joint sampler. No
+seven-axis IK solver or SRDF group change is needed; the six-axis arm and
+independent gripper controllers remain unchanged.
+
+This behavior is checked against the actual MoveIt OMPL engine (planning
+services only, no execution actions or hardware processes):
+
+```bash
+source install/setup.bash
+ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
+```
+
+The test requires an isolated ROS domain in 200–232 and uses simulated joint
+feedback. It checks arm-only and combined full-pose targets using MoveIt FK,
+checks the gripper endpoint, confirms runtime union-sampler allocation, and
+verifies that a blocking Planning Scene obstacle is rejected. The resulting
+trajectories are never sent to controllers. CI runs this test after building.
+
+Source references: MoveIt Humble
+[`RobotModel::setKinematicsAllocators`](https://github.com/moveit/moveit2/blob/humble/moveit_core/robot_model/src/robot_model.cpp)
+and
+[`ConstraintSamplerManager::selectDefaultSampler`](https://github.com/moveit/moveit2/blob/humble/moveit_core/constraint_samplers/src/constraint_sampler_manager.cpp).
