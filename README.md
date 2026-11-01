@@ -117,12 +117,12 @@ The Teleop entry uses a process-scoped Fast DDS UDP profile unless an explicit D
 ### STM32 feedback clock admission
 
 `stm32_state_republisher.py` preserves the original acquisition stamp. Zero/malformed stamps,
-more than 50 ms in the future, more than 1 s old, and regressions greater than 50 ms
+more than 50 ms in the future, 1 s or more old, and regressions greater than 50 ms
 are rejected; duplicate/minor out-of-order samples are dropped. ROS clock jumps relative
 to monotonic time greater than 250 ms restart admission. Recovery requires 200 ms of
 continuous valid increasing feedback. Silence for 1 s marks the stream stale.
 Firmware diagnostic v1 (16 words) remains compatible. V2 (24 words) additionally requires
-synchronized firmware state, last-sync age <=15 s and diagnostics received within 3 s;
+synchronized firmware state, last-sync age <15 s and diagnostics received within 3 s;
 a firmware epoch change restarts recovery. Each relay publishes read-only JSON health at
 `~/time_sync_status`, including state, generation, source offset and
 receipt age; fresh communication alone does not prove synchronized source time.

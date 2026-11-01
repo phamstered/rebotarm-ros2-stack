@@ -22,7 +22,7 @@ def test_startup_stability_and_timestamp_boundaries():
     assert not valid(c)
     assert not valid(c, 10199000000, 199000000)
     assert valid(c, 10200000000, 200000000)
-    for stamp in (0, 12000000000, 8000000000):
+    for stamp in (0, 12000000000, 8000000000, 9300000000):
         assert not c.observe(stamp, 10300000000, 300000000)
         assert c.state == 'unsynchronized'
     assert not valid(c, 10400000000, 400000000)
@@ -50,6 +50,10 @@ def test_firmware_versions_epoch_and_expiry():
     c.firmware(diag(epoch=2), 210000000)
     assert not valid(c, 10220000000, 220000000)
     assert valid(c, 10420000000, 420000000)
+    expired = diag(epoch=2)
+    expired[17] = 15000
+    c.firmware(expired, 425000000)
+    assert not c.firmware_ok
     c.firmware(diag(state=2, epoch=2), 430000000)
     assert not valid(c, 10440000000, 440000000)
     c.firmware(diag(epoch=2), 450000000)

@@ -36,7 +36,7 @@ class FeedbackClock:
             self.generation += 1
         self.firmware_epoch = epoch
         self.firmware_at = steady_ns
-        self.firmware_ok = data[16] == 1 and data[17] <= 15000
+        self.firmware_ok = data[16] == 1 and data[17] < 15000
         if not self.firmware_ok:
             self.invalidate('固件时间尚未同步或已失步')
 
@@ -60,7 +60,7 @@ class FeedbackClock:
         if not self.firmware_ok or (self.firmware_at is not None and steady_ns-self.firmware_at >= 3000000000):
             self.invalidate('固件时间尚未同步或诊断已过期')
             return False
-        if stamp_ns <= 0 or stamp_ns - now_ns > 50000000 or now_ns - stamp_ns > 1000000000:
+        if stamp_ns <= 0 or stamp_ns - now_ns > 50000000 or now_ns - stamp_ns >= 1000000000:
             self.invalidate('反馈时间戳无效、超前或过旧')
             return False
         if self.last_stamp is not None and stamp_ns <= self.last_stamp:
