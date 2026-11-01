@@ -99,21 +99,28 @@ def test_startup_reuse_rejects_wrong_or_multiple_gripper_owners(selected, enable
 
 
 @pytest.mark.parametrize('raw,expected', [(.497253418, 0.), (-5.308041573, .05)])
-def test_live_feedback_relay_converts_gripper_raw_units_before_tf(raw, expected):
+def test_live_feedback_relay_converts_gripper_raw_units_before_tf(raw, expected, monkeypatch):
     from types import SimpleNamespace
     from sensor_msgs.msg import JointState
+    import time
+    monkeypatch.syspath_prepend(str(PACKAGE / 'scripts'))
     spec = importlib.util.spec_from_file_location(
         'feedback_relay', PACKAGE / 'scripts/stm32_state_republisher.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     outputs = []
+    clock = module.FeedbackClock()
+    clock.valid_since = time.monotonic_ns()-300000000
     relay = SimpleNamespace(
         _joint_names=list(module.ARM_JOINT_NAMES) + [module.GRIPPER_JOINT_NAME],
         _gripper_position_scale=-.008612826752,
         _gripper_position_offset=.004282757541,
         _missing_joints_logged=False, _first_state_logged=True,
-        _publisher=SimpleNamespace(publish=outputs.append))
+        _publisher=SimpleNamespace(publish=outputs.append),
+        _feedback_clock=clock, _tf_publisher=None,
+        get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(nanoseconds=100000000000)))
     message = JointState()
+    message.header.stamp.sec = 100
     message.name = relay._joint_names
     message.position = [.1] * 6 + [raw]
     message.velocity = [.2] * 6 + [1.]

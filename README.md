@@ -67,7 +67,7 @@ colcon test && colcon test-result --verbose
 | 左臂腕部 RealSense RGBD | Jetson | `ros2 launch rebotarm_gazebo left_wrist_camera.launch.py`（多相机时指定 `serial_no:=...`） |
 | Sync + remote build | Dev machine | `./scripts/sync_and_build.sh` (uses `rsync --delete` — review first) |
 
-左腕相机入口固定使用 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，启用彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`；`camera_link → left_arm/wrist_link` 的零位姿静态 TF 将 RealSense 光学帧连接到现有 URDF hand-eye 外参。真机启动文件让 `robot_state_publisher` 从 `/stm32/joint_states` 生成动态 TF，与 Robot View 的机械臂反馈保持一致，避免 ros2_control 硬件未配置时 `/joint_states` 仍输出旧姿态。启动前需要安装 `realsense2_camera`、`tf2_ros` 并完成 `rebotarm_gazebo` 构建。
+左腕相机入口固定使用 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，启用彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`；`camera_link → left_arm/wrist_link` 的零位姿静态 TF 将 RealSense 光学帧连接到现有 URDF hand-eye 外参。真机启动文件让 `robot_state_publisher` 从经过时间戳检查和单调 20 Hz 限流的 `/robot_feedback/tf_joint_states` 生成动态 TF，与 Robot View 的机械臂反馈保持一致，避免 ros2_control 硬件未配置时 `/joint_states` 仍输出旧姿态。启动前需要安装 `realsense2_camera`、`tf2_ros` 并完成 `rebotarm_gazebo` 构建。
 
 真实轨迹控制器已显式激活后，可单独启动点位规划服务：
 
@@ -113,3 +113,26 @@ Static build: `npm run docs:build`.
 ### Teleop DDS and shutdown behavior
 
 The Teleop entry uses a process-scoped Fast DDS UDP profile unless an explicit DDS XML profile is supplied. Rebuild `joint_state_relay` after updating the script: its `leader_driver` adapter runs the installed external Star Arm node with normal ROS shutdown handling, preserving serial/joint configuration and real errors. See [build/run](docs/build-run.md#teleop-discovery-and-signal-shutdown). Safe-stop and firmware acknowledgement checks remain required; no live SHM files are deleted.
+
+### STM32 feedback clock admission
+
+`stm32_state_republisher.py` preserves the original acquisition stamp. Zero/malformed stamps,
+more than 50 ms in the future, 1 s or more old, and regressions greater than 50 ms
+are rejected; duplicate/minor out-of-order samples are dropped. ROS clock jumps relative
+to monotonic time greater than 250 ms restart admission. Recovery requires 200 ms of
+continuous valid increasing feedback. Silence for 1 s marks the stream stale.
+Firmware diagnostic v1 (16 words) remains compatible. V2 (24 words) additionally requires
+synchronized firmware state, last-sync age <15 s and diagnostics received within 3 s;
+a firmware epoch change restarts recovery. Each relay publishes read-only JSON health at
+`~/time_sync_status`, including state, generation, source offset and
+receipt age; fresh communication alone does not prove synchronized source time.
+
+Normalized feedback retains its original rate and stamp. Only RobotStatePublisher uses
+the separate volatile `/robot_feedback/tf_joint_states` output, limited to 20 Hz using
+monotonic time. RSP's `ignore_timestamp=true` bypasses its old-epoch throttle *after* the
+relay guard, retaining the source stamp on TF; corrected timestamps can therefore publish
+without restarting RSP/controllers. TF consumers must clear already-cached future data on
+epoch changes (the desktop Bridge handles its own buffer); changing the guard cannot erase
+historical buffers in external consumers. Upgrade requires installing the helper script,
+republisher and launch together and restarting these read-only nodes through the normal
+safe bring-up flow. Controllers and firmware watchdogs are unchanged.
