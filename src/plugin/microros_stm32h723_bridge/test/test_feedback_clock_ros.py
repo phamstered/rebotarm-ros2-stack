@@ -1,5 +1,6 @@
 """Isolated real RSP test: bad source time cannot freeze corrected TF."""
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -34,7 +35,7 @@ def test_real_rsp_recovers_large_source_rollback_and_tf_rate_is_bounded():
     urdf += '</robot>'
     process = subprocess.Popen(['ros2','run','robot_state_publisher','robot_state_publisher',
         '--ros-args','-p','robot_description:='+urdf,'-p','ignore_timestamp:=true',
-        '-r','joint_states:=/robot_feedback/tf_joint_states'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        '-r','joint_states:=/robot_feedback/tf_joint_states'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     def pump(seconds, future=0, direct=False):
         end = time.monotonic()+seconds
         while time.monotonic()<end:
@@ -63,9 +64,9 @@ def test_real_rsp_recovers_large_source_rollback_and_tf_rate_is_bounded():
         assert len(normalized) > len(stamps)*2
         assert normalized[-1].header.stamp.sec != 0
     finally:
-        process.terminate()
+        os.killpg(process.pid, signal.SIGTERM)
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            process.kill(); process.wait()
+            os.killpg(process.pid, signal.SIGKILL); process.wait()
         relay.destroy_node();node.destroy_node();rclpy.shutdown()
