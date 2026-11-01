@@ -7,6 +7,8 @@ controller_manager:
       type: joint_trajectory_controller/JointTrajectoryController
     arm_teleop_controller:
       type: position_controllers/JointGroupPositionController
+    gripper_trajectory_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
     gripper_teleop_controller:
       type: position_controllers/JointGroupPositionController
     gravity_compensation_controller:
@@ -84,3 +86,21 @@ vla_position_controller:
     chunk_topic: /vla/joint_chunk
     command_timeout_sec: 0.2
     max_delta_per_sec: 1.0
+
+# Owns the same gripper position interface as gripper_teleop_controller.
+# ros2_control rejects simultaneous activation. VLA keeps its separate arm owner.
+gripper_trajectory_controller:
+  ros__parameters:
+    joints: [gripper_finger_left_joint]
+    command_interfaces: [position, velocity]
+    state_interfaces: [position, velocity]
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    allow_nonzero_velocity_at_trajectory_end: false
+    constraints:
+      stopped_velocity_tolerance: 0.001
+      goal_time: 1.0
+      gripper_finger_left_joint:
+        trajectory: 0.005
+        goal: 0.001

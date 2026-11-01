@@ -38,7 +38,7 @@ usage() {
     echo "  --position-controller=teleop|trajectory|none  Select the position controller (default: teleop)."
     echo "  --gravity=true|false  Enable the independent effort controller (default: false)."
     echo "  --joint4-calibration=true|false  Run guarded joint4 calibration (default: false)."
-    echo "  --gripper=true|false  Enable calibrated gripper teleoperation (default: false)."
+    echo "  --gripper=true|false  Enable calibrated gripper for teleop or trajectory (default: false)."
     echo "  --mode=teleop|gravity|calibration  Backward-compatible preset alias."
     echo "  --start-leader=true   Start robo_driver in /leader namespace with lock disabled."
     echo "  --start-leader=false  Require an existing /leader/joint_states publisher (default)."
@@ -173,8 +173,8 @@ if [[ "$ENABLE_GRIPPER" != "true" && "$ENABLE_GRIPPER" != "false" ]]; then
     echo "ERROR: --gripper must be true or false." >&2
     exit 2
 fi
-if [[ "$ENABLE_GRIPPER" == "true" && "$POSITION_CONTROLLER" != "teleop" ]]; then
-    echo "ERROR: Initial gripper testing requires --position-controller=teleop." >&2
+if [[ "$ENABLE_GRIPPER" == "true" && "$POSITION_CONTROLLER" == "none" ]]; then
+    echo "ERROR: Gripper control requires --position-controller=teleop or trajectory." >&2
     exit 2
 fi
 if [[ "$POSITION_CONTROLLER" != "teleop" ]]; then
@@ -188,6 +188,10 @@ fi
 if [[ "$ENABLE_GRIPPER" == "true" ]]; then
     REQUIRED_ACTIVE_JOINT_MASK=$((0x7F))
     GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/arm_gripper_mit_gains.yaml"
+fi
+GRIPPER_CONTROLLER="gripper_teleop_controller"
+if [[ "$POSITION_CONTROLLER" == "trajectory" ]]; then
+    GRIPPER_CONTROLLER="gripper_trajectory_controller"
 fi
 SELECTED_EFFORT_CONTROLLER=""
 if [[ "$ENABLE_GRAVITY_CONTROLLER" == "true" ]]; then
@@ -324,9 +328,12 @@ controller_has_state() {
 gripper_controller_matches() {
     local controller_output="$1"
     if [[ "$ENABLE_GRIPPER" == "true" ]]; then
-        controller_has_state gripper_teleop_controller active "$controller_output"
+        local other="gripper_trajectory_controller"
+        [[ "$GRIPPER_CONTROLLER" == "gripper_trajectory_controller" ]] && other="gripper_teleop_controller"
+        controller_has_state "$GRIPPER_CONTROLLER" active "$controller_output" &&
+            ! controller_has_state "$other" active "$controller_output"
     else
-        ! grep -Eq '^gripper_teleop_controller[[:space:]]' \
+        ! grep -Eq '^gripper_(teleop|trajectory)_controller[[:space:]].*[[:space:]]active[[:space:]]*$' \
             <<<"$(strip_ansi <<<"$controller_output")"
     fi
 }
@@ -703,7 +710,7 @@ if [[ "$ENABLE_JOINT4_CALIBRATION" == "true" ]]; then
     ACTIVE_COMMAND_CONTROLLERS+=(joint4_calibration_controller)
 fi
 if [[ "$ENABLE_GRIPPER" == "true" ]]; then
-    ACTIVE_COMMAND_CONTROLLERS+=(gripper_teleop_controller)
+    ACTIVE_COMMAND_CONTROLLERS+=("$GRIPPER_CONTROLLER")
 fi
 controller_deadline=$((SECONDS + CONTROLLER_START_TIMEOUT))
 controller_list=""
@@ -792,6 +799,10 @@ done
 if [[ "$ENABLE_GRIPPER" == "true" ]] && \
     ! grep -Eq "gripper_finger_left_joint/position \[available\] \[claimed\]" \
         <<<"$hardware_interfaces"; then
+    interfaces_valid="false"
+fi
+if [[ "$ENABLE_GRIPPER" == "true" && "$POSITION_CONTROLLER" == "trajectory" ]] && \
+    ! grep -Eq "gripper_finger_left_joint/velocity \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
     interfaces_valid="false"
 fi
 if ! grep -Eq 'label=active' <<<"$hardware_components" || [[ "$interfaces_valid" != "true" ]]; then

@@ -63,8 +63,14 @@ def generate_launch_description():
     calibration_inactive = IfCondition(PythonExpression([
         "'", state_only, "' == 'false'",
     ]))
-    gripper_active = IfCondition(PythonExpression([
+    gripper_teleop_active = IfCondition(PythonExpression([
         "'", enable_gripper, "'.lower() == 'true' and '",
+        position_controller, "' == 'teleop' and '",
+        state_only, "' == 'false'",
+    ]))
+    gripper_trajectory_active = IfCondition(PythonExpression([
+        "'", enable_gripper, "'.lower() == 'true' and '",
+        position_controller, "' == 'trajectory' and '",
         state_only, "' == 'false'",
     ]))
 
@@ -151,7 +157,7 @@ def generate_launch_description():
             # The ros2_control broadcaster can keep publishing its last joint
             # positions after the hardware component becomes unconfigured.
             # TF must follow the same live feedback used by Robot View.
-            remappings=[('/joint_states', '/stm32/joint_states')],
+            remappings=[('/joint_states', '/robot_feedback/joint_states')],
             output='screen',
         ),
         Node(
@@ -168,6 +174,29 @@ def generate_launch_description():
             condition=IfCondition(state_only),
         ),
         Node(
+            package='microros_stm32h723_bridge',
+            executable='stm32_state_republisher.py',
+            name='robot_feedback_republisher',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'include_gripper': enable_gripper,
+                'output_topic': '/robot_feedback/joint_states',
+                'gripper_position_scale': -0.008612826752,
+                'gripper_position_offset': 0.004282757541,
+            }],
+            output='screen',
+        ),
+        Node(
+            package='controller_manager',
+            executable='spawner',
+            arguments=[
+                'gripper_trajectory_controller',
+                '--controller-manager', '/controller_manager',
+            ],
+            output='screen',
+            condition=gripper_trajectory_active,
+        ),
+        Node(
             package='controller_manager',
             executable='spawner',
             arguments=[
@@ -175,7 +204,7 @@ def generate_launch_description():
                 '--controller-manager', '/controller_manager',
             ],
             output='screen',
-            condition=gripper_active,
+            condition=gripper_teleop_active,
         ),
         Node(
             package='controller_manager',

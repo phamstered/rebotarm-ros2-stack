@@ -86,7 +86,7 @@ def test_robot_state_publisher_uses_live_stm32_joint_feedback():
         if keyword.arg == 'remappings'
     )
     assert ast.literal_eval(remappings) == [
-        ('/joint_states', '/stm32/joint_states')
+        ('/joint_states', '/robot_feedback/joint_states')
     ]
 
 
@@ -126,7 +126,7 @@ def test_bringup_controllers_claim_joints_1_to_6():
     assert config['arm_trajectory_controller']['ros__parameters'][
         'command_interfaces'] == ['position', 'velocity']
     gripper = ET.parse(PACKAGE_ROOT / 'urdf' / 'rebotarm.arm.micro_ros.xacro').getroot().find('.//joint[@name="gripper_finger_left_joint"]')
-    assert [item.attrib['name'] for item in gripper.findall('command_interface')] == ['position', 'effort']
+    assert [item.attrib['name'] for item in gripper.findall('command_interface')] == ['position', 'effort', 'velocity']
     assert config['arm_trajectory_controller']['ros__parameters'][
         'allow_partial_joints_goal'] is True
     manager = config['controller_manager']['ros__parameters']

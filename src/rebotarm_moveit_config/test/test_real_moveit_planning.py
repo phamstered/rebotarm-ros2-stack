@@ -34,7 +34,7 @@ def main():
     original_node = module.Node
     from launch.actions import OpaqueFunction
     module.Node = lambda **kwargs: (params.append(kwargs["parameters"][0]) or OpaqueFunction(function=lambda _: []))
-    module.generate_launch_description(); module.Node = original_node
+    module.move_group_node(); module.Node = original_node
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         yaml.safe_dump({"move_group": {"ros__parameters": params[0]}}, f); parameter_path = f.name
     log = open("/tmp/codex-real-moveit-planning.log", "w")
