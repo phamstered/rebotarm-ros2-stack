@@ -49,6 +49,10 @@ def test_real_rsp_recovers_large_source_rollback_and_tf_rate_is_bounded():
             rclpy.spin_once(node, timeout_sec=.001)
             time.sleep(.002)
     try:
+        until = time.monotonic()+10
+        while bypass.get_subscription_count() == 0 and time.monotonic() < until:
+            rclpy.spin_once(node, timeout_sec=.05)
+        assert bypass.get_subscription_count() > 0, "RSP subscription discovery timed out"
         pump(1., future=15)
         assert not normalized and not received
         # Deliberately seed RSP's prior-epoch throttle as would happen before upgrade.
