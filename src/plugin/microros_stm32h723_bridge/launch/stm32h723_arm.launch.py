@@ -152,12 +152,14 @@ def generate_launch_description():
             executable='robot_state_publisher',
             parameters=[
                 robot_description,
-                {'use_sim_time': use_sim_time},
+                {'use_sim_time': use_sim_time, 'ignore_timestamp': True},
             ],
+            # Guarded TF feedback is limited at 20 Hz using monotonic time.
+            # ignore_timestamp bypasses RSP's old-epoch throttle, not our guard.
             # The ros2_control broadcaster can keep publishing its last joint
             # positions after the hardware component becomes unconfigured.
             # TF must follow the same live feedback used by Robot View.
-            remappings=[('/joint_states', '/robot_feedback/joint_states')],
+            remappings=[('/joint_states', '/robot_feedback/tf_joint_states')],
             output='screen',
         ),
         Node(
@@ -181,6 +183,7 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 'include_gripper': enable_gripper,
                 'output_topic': '/robot_feedback/joint_states',
+                'publish_tf_feedback': True,
                 'gripper_position_scale': -0.008612826752,
                 'gripper_position_offset': 0.004282757541,
             }],

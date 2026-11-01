@@ -140,10 +140,15 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(FILES scripts/feedback_clock.py DESTINATION lib/${PROJECT_NAME})
+
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_pytest_test(test_config test/test_config.py)
+  ament_add_pytest_test(test_feedback_clock test/test_feedback_clock.py)
+  ament_add_pytest_test(test_feedback_clock_ros test/test_feedback_clock_ros.py
+    ENV ROS_DOMAIN_ID=218 ROS_LOCALHOST_ONLY=1 TIMEOUT 40)
   ament_add_pytest_test(test_gripper_trajectory test/test_gripper_trajectory.py)
   ament_add_pytest_test(test_teleop_checks test/test_teleop_checks.py)
   ament_add_gtest(test_stop_lifecycle test/test_stop_lifecycle.cpp)

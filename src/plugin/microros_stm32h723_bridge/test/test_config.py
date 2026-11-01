@@ -86,7 +86,7 @@ def test_robot_state_publisher_uses_live_stm32_joint_feedback():
         if keyword.arg == 'remappings'
     )
     assert ast.literal_eval(remappings) == [
-        ('/joint_states', '/robot_feedback/joint_states')
+        ('/joint_states', '/robot_feedback/tf_joint_states')
     ]
 
 
