@@ -425,3 +425,34 @@ def test_hardware_description_has_no_integral_compensation_parameter():
     assert robot.find('.//hardware/param[@name="trajectory_integral_config"]') is None
     source = (PACKAGE_ROOT / 'src/micro_ros_system.cpp').read_text()
     assert 'trajectory_integral' not in source
+
+
+def test_real_jtc_state_publication_targets_match_the_100_hz_control_loop():
+    workspace = PACKAGE_ROOT.parents[2]
+    profiles = [
+        (PACKAGE_ROOT / 'config/arm_controllers.yaml',
+         ('arm_trajectory_controller', 'gripper_trajectory_controller')),
+        (PACKAGE_ROOT / 'config/ros2_controllers.yaml',
+         ('arm_controller', 'gripper_controller')),
+        (workspace / 'src/rebotarm_moveit_config/config/ros2_controllers.yaml',
+         ('arm_controller',)),
+    ]
+    for path, controllers in profiles:
+        config = yaml.safe_load(path.read_text())
+        assert config['controller_manager']['ros__parameters']['update_rate'] == 100
+        for name in controllers:
+            params = config[name]['ros__parameters']
+            assert params['state_publish_rate'] == 100.0, (path, name)
+            # The legacy gripper profile keeps the upstream action monitor default.
+            if name != 'gripper_controller':
+                assert params['action_monitor_rate'] == 20.0, (path, name)
+
+
+def test_gazebo_keeps_its_independent_controller_and_publication_rates():
+    workspace = PACKAGE_ROOT.parents[2]
+    config = yaml.safe_load((workspace / 'src/rebotarm_gazebo/config/ros2_controllers.yaml').read_text())
+    assert config['controller_manager']['ros__parameters']['update_rate'] == 500
+    for name in ('arm_controller', 'gripper_controller'):
+        params = config[name]['ros__parameters']
+        assert params['state_publish_rate'] == 200.0
+        assert params['action_monitor_rate'] == 50.0

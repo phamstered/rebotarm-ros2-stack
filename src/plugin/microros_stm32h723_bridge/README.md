@@ -180,6 +180,20 @@ independent gravity effort controller is disabled by default in the launch.
 The hardware profile clamps effort feed-forward to 10 N*m for joint1-3 and
 6 N*m for joint4-6. State-only mode never loads this control path.
 
+## Trajectory state publication
+
+The real arm and gripper JTCs in `config/arm_controllers.yaml`, and the legacy
+arm/gripper JTCs in `config/ros2_controllers.yaml`, target **100 Hz**
+`controller_state` publication. The controller-manager update loop remains
+100 Hz; action monitoring, gains, constraints and motion limits are unchanged.
+This is a publication target, not a guaranteed measured receive rate: controller
+scheduling, period quantization, realtime publisher contention and DDS delivery
+can reduce it. It does not increase STM32 feedback or `/joint_states` rates.
+Compare runtime parameters and timestamped measurements after controlled
+reconfiguration; editing a YAML file does not refresh an already configured JTC.
+Faster publication reduces asynchronous comparison latency but does not replace
+time-aligned feedback comparison or change its existing safety thresholds.
+
 ## Arm teleoperation
 
 The bring-up launch activates `arm_teleop_controller` by default and

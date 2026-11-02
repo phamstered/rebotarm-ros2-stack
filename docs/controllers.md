@@ -67,6 +67,23 @@ STM32H723 固件（rebotarm-executor）
 | `joint4_calibration_controller` | 自定义 | effort + 多 Trigger 服务 | 标定模式；与重力互斥 |
 | `vla_position_controller` | 自定义 | **仅** position · j1–6 | VLA scheme B；与 teleop/trajectory 互斥；可与重力并行 |
 
+### JTC 状态发布目标
+
+真实 `arm_controllers.yaml` 的 `arm_trajectory_controller` 与
+`gripper_trajectory_controller` 均将 `state_publish_rate` 设为 **100 Hz**。
+旧 micro-ROS `ros2_controllers.yaml` 的 arm/gripper 控制器以及 MoveIt 参考配置
+的 arm 控制器同步使用该目标；Gazebo 仍保持独立的 500 Hz 控制环与 200 Hz 状态发布目标。
+
+`controller_manager.update_rate` 仍为 **100 Hz**。状态发布率只控制
+`<controller>/controller_state` 的发送节奏，不会提高控制环频率、STM32 采样率或
+`/joint_states` 的发布率，也不改变 `action_monitor_rate`、增益、约束或运动限值。
+100 Hz 是配置目标，实际接收率可能因周期量化、调度、实时发布锁竞争及 DDS 传输而降低，
+需要分别核对运行参数与带时间戳的实测频率；仅修改文件不会更新已配置的控制器。
+
+提高发布率可以减少异步反馈比较中的等待，但不能保证两条反馈在同一时刻采样。
+仍需按时间戳对齐数据，并保留现有一致性算法、误差门限与安全门。
+生产重新配置应走受控 Controller 生命周期与既有安全流程，不直接重启维持输出的控制栈。
+
 ### 安全与运维要点
 
 - 串口只由 **一个** agent 占用；launch 默认 `start_agent:=false`
