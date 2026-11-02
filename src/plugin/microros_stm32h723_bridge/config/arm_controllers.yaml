@@ -29,7 +29,7 @@ arm_trajectory_controller:
     joints: [joint1, joint2, joint3, joint4, joint5, joint6]
     command_interfaces: [position, velocity]
     state_interfaces: [position, velocity]
-    state_publish_rate: 50.0
+    state_publish_rate: 100.0
     action_monitor_rate: 20.0
     allow_partial_joints_goal: true
     allow_nonzero_velocity_at_trajectory_end: false
@@ -94,7 +94,7 @@ gripper_trajectory_controller:
     joints: [gripper_finger_left_joint]
     command_interfaces: [position, velocity]
     state_interfaces: [position, velocity]
-    state_publish_rate: 50.0
+    state_publish_rate: 100.0
     action_monitor_rate: 20.0
     allow_partial_joints_goal: false
     allow_nonzero_velocity_at_trajectory_end: false
