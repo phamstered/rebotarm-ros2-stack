@@ -16,7 +16,7 @@ ros2_control 控制器层（controller_manager）
   · JointStateBroadcaster
   · GravityCompensationController（effort-only）
   · Joint4CalibrationController（与重力控制器互斥）
-        │  接口名匹配：jointN/position · jointN/effort
+        │  接口名匹配：jointN/position · jointN/velocity · jointN/effort
         ▼
 硬件后端（三选一，勿混用同一物理臂）
   · Gazebo: ign_ros2_control / mock_components
@@ -46,7 +46,7 @@ ros2_control 控制器层（controller_manager）
 |----|------|------------------|
 | **`rebotarm_gazebo`** | ament_cmake | B601 URDF/Xacro、meshes、Gazebo 世界、`ros2_controllers.yaml`、`rebotarm_gazebo.launch.py`、RViz / gz↔ROS 桥脚本 |
 | **`rebotarm_moveit_config`** | ament_cmake | MoveIt2：SRDF、OMPL、KDL、`demo.launch.py`（mock）、`gazebo_demo.launch.py`、控制器与限位 YAML |
-| **`microros_stm32h723_bridge`** | ament_cmake（`src/plugin/`） | `hardware_interface::SystemInterface` 插件；自定义 msg；Pinocchio 重力库；两个 `controller_interface` 插件；arm / bridge launch；mock / smoke / republisher 脚本 |
+| **`microros_stm32h723_bridge`** | ament_cmake（`src/plugin/`） | `hardware_interface::SystemInterface` 插件；自定义 msg；Pinocchio 重力库；三个 `controller_interface` 插件（重力、Joint4 标定、VLA position）；arm / bridge launch；mock / smoke / republisher 脚本 |
 | **`rebotarm_hw_driver`** | ament_python | 经 `reBotArm_control_py` 的 CAN MIT 从臂节点：订阅 `/joint_commands`，发布 `joint_states`，内建 RETURN/HOLD/TRACK 与重力前馈 |
 | **`joint_state_relay`** | ament_python | 主→从映射与限速；三种 mode；`domain_bridge`；`calibrate_gripper` |
 
@@ -61,18 +61,21 @@ ros2_control 控制器层（controller_manager）
 | `microros_stm32h723_bridge/MicroRosSystem` | `SystemInterface` | 7 槽位 MIT：读 `/stm32/joint_states`，写 `/stm32/joint_commands`；模式 HOLD/TRACK/RETURN/DISABLE；`safe_stop` 服务 |
 | `…/GravityCompensationController` | `ControllerInterface` | 只占 **effort** 命令接口；Pinocchio `GravityCompensation` |
 | `…/Joint4CalibrationController` | `ControllerInterface` | 多姿态回归（gravity_scale / 偏置 / camera_link 等效质量）；与重力控制器 **互斥** |
+| `…/VlaPositionController` | `ControllerInterface` | 订阅 `/vla/joint_chunk`，只写 joint1–6 position；与 teleop / trajectory **互斥** |
 
-`stm32h723_arm.launch.py` 用 launch 参数组合位置控制器与重力/标定；其中 `robot_state_publisher` 订阅 `/stm32/joint_states` 生成动态 TF，使用与 Robot View 相同的实时反馈。`/joint_states` 仍由 ros2_control 广播，但硬件 unconfigured 时可能继续输出最后一次位置，不能用于相机点云的实时 TF：
+`stm32h723_arm.launch.py` 用 launch 参数组合位置控制器与重力/标定。动态 TF 不直接订阅 `/stm32/joint_states`：`robot_feedback_republisher` 先做时间戳准入，再发布未降频的 `/robot_feedback/joint_states`，以及按单调时钟限到 **20 Hz** 的 `/robot_feedback/tf_joint_states`。`robot_state_publisher` 把 `/joint_states` 重映射到后者，并设置 `ignore_timestamp=true`（只绕过 RSP 自己的旧 epoch 节流，不绕过 republisher 的准入）。ros2_control 的 `/joint_states` 在硬件 unconfigured 时可能停在最后一次位置，不能用于相机点云的实时 TF。准入规则与 `~/time_sync_status` 见 [数据采集质量](./data-collection)。
+
+硬件 `write()` 在 effort 限幅内转发控制器力矩，**没有**轨迹积分补偿。重力前馈只来自 `gravity_compensation_controller`。
 
 | 参数 | 取值 | 效果 |
 |------|------|------|
 | `position_controller` | `teleop` / `trajectory` / `none` | 激活 teleop、轨迹，或纯 effort 调参 |
 | `enable_gravity_controller` | bool | 与位置控制器可并存（不同接口） |
 | `enable_joint4_calibration` | bool | 加载标定控制器（通常 inactive，由守卫脚本激活） |
-| `enable_gripper` | bool | 导出夹爪 position/effort；`required_joint_mask` 0x7F vs 0x3F |
-| `state_only` | bool | 仅 `stm32_state_republisher`，不启 ros2_control 命令路径 |
+| `enable_gripper` | bool | 导出夹爪 position/velocity/effort；`required_joint_mask` 0x7F vs 0x3F |
+| `state_only` | bool | 不启 ros2_control 命令路径；`stm32_state_republisher` 发布 `/joint_states`。`robot_feedback_republisher` 在普通模式和 state-only 下都会运行 |
 
-消息契约：`JointCommand.msg` / `HardwareStatus.msg`（固定 `float32[7]`，含 sequence、mode、mask、fault）。
+消息契约：`JointCommand.msg`（`sequence`、`mode`、固定 `float32[7]` 的 position / velocity / kp / kd / effort）与 `HardwareStatus.msg`（`last_command_sequence`、`mode`、`active_joint_mask`、`fault_code`）。
 
 ## 关节中继三种 mode
 
@@ -88,7 +91,10 @@ ros2_control 控制器层（controller_manager）
 
 - **独立规划验证**：`rebotarm_moveit_config/demo.launch.py` → `mock_components/GenericSystem`
 - **仿真规划**：`gazebo_demo.launch.py` 包含 `rebotarm_gazebo.launch.py` + `move_group`
-- Gazebo 控制器：`arm_controller` + `gripper_controller`（`JointTrajectoryController`，update_rate 500 Hz）
+- **真机规划**：`real_move_group.launch.py` 只起 `move_group`，不创建硬件、不切换控制器。六轴规划上限 **2 rad/s、2 rad/s²**，默认缩放 1.0；夹爪 **0.02 m/s、0.04 m/s²**。`enable_gripper:=true` 时同时映射 `gripper_trajectory_controller`
+- Gazebo 控制器：`arm_controller` + `gripper_controller`（`JointTrajectoryController`，`update_rate` 500 Hz，`state_publish_rate` 200 Hz）。`start_gazebo.sh` 会额外 spawn `gripper_controller`
+- SRDF 规划组：`arm`（六轴 KDL 与 HOME）、`gripper`、`arm_with_gripper`（扁平七关节，无单独七轴 IK）。`arm_with_gripper` 的 `link6` 位姿目标由 MoveIt 按关节集合包含关系复用 `arm` 的 KDL，再与夹爪关节采样组合
+- `moveit_controllers.yaml` 的执行目标名是 **`arm_trajectory_controller`**。Gazebo / MoveIt demo 的 ros2_control 控制器仍叫 **`arm_controller`**，两边名字并不相同
 
 ## 技术栈
 

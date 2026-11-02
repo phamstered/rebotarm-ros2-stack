@@ -27,9 +27,9 @@
 | Layer | What lives here |
 |---|---|
 | **Description / sim** | `rebotarm_gazebo` — URDF, meshes, Ignition worlds, gazebo controllers |
-| **Motion planning** | `rebotarm_moveit_config` — MoveIt2 demo (mock) and Gazebo demo |
+| **Motion planning** | `rebotarm_moveit_config` — MoveIt2 mock demo, Gazebo demo, and real `real_move_group.launch.py` |
 | **ros2_control hardware** | `microros_stm32h723_bridge` — `MicroRosSystem` + MIT modes HOLD/TRACK/RETURN/DISABLE |
-| **ros2_control controllers** | teleop / trajectory / gripper position; `GravityCompensationController`; `Joint4CalibrationController` |
+| **ros2_control controllers** | teleop / trajectory / gripper position and gripper trajectory; `GravityCompensationController`; `Joint4CalibrationController`; `VlaPositionController` |
 | **CAN driver (non-plugin)** | `rebotarm_hw_driver` — `/joint_commands` → MIT loop on `can0` |
 | **Application / bridging** | `joint_state_relay` — joint map, domain bridge, gripper endpoint calibration |
 
@@ -75,7 +75,7 @@ colcon test && colcon test-result --verbose
 ros2 launch rebotarm_moveit_config real_move_group.launch.py
 ```
 
-该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 2 rad/s、2 rad/s²；配套上位机请求使用 1.0 缩放。此处是规划上限，不会修改固件限幅、MIT 增益或重力补偿。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
+该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。默认执行目标是 `arm_trajectory_controller`；夹爪轨迹已激活时加 `enable_gripper:=true`，同时映射 `gripper_trajectory_controller`。规划组为 `arm`、`gripper`、`arm_with_gripper`（`link6` 位姿加夹爪关节，无单独七轴 IK）。真实六关节速度、加速度分别限于 2 rad/s、2 rad/s²；配套上位机请求使用 1.0 缩放。夹爪规划上限为 0.02 m/s、0.04 m/s²。此处是规划上限，不会修改固件限幅、MIT 增益或重力补偿。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。Gazebo 控制器名仍是 `arm_controller`，与这份真机 MoveIt 映射不同。
 
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 
@@ -96,7 +96,10 @@ Static build: `npm run docs:build`.
 
 - `colcon build` (including `microros_stm32h723_bridge`)
 - pytest: `joint_state_relay/test`
-- ament pytest: micro-ROS bridge config / source contracts
+- `colcon test`: micro-ROS bridge, `rebotarm_gazebo`, `rebotarm_moveit_config`
+- isolated smokes: mock-MCU trajectory velocity, calibrated gripper trajectory, and MoveIt full-pose planning (no execution)
+
+`.github/workflows/ci-image.yml` publishes `ghcr.io/phamstered/rebotarm-ros2-ci`, but `ci.yml` still installs Humble with `ros-tooling/setup-ros` on `ubuntu-22.04`.
 
 **Not covered:** live hardware, Gazebo GUI, Jetson bring-up. Docs deploy via `.github/workflows/deploy-docs.yml`. See **[CI](https://phamstered.github.io/rebotarm-ros2-stack/ci)** · [docs/ci.md](docs/ci.md).
 

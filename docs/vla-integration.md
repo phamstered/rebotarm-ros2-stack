@@ -35,7 +35,7 @@ Firmware is unchanged. There is no end-effector / IK layer in this path.
 | `vla_position_controller` | **position** j1–6 | Subscribes to chunks; rate-limits; holds on timeout/NaN |
 | `gravity_compensation_controller` | **effort** j1–6 | Safe to run in parallel |
 | `arm_teleop_controller` | position j1–6 | **Mutually exclusive** with VLA |
-| `arm_trajectory_controller` | position j1–6 | **Mutually exclusive** with VLA |
+| `arm_trajectory_controller` | position + velocity j1–6 | **Mutually exclusive** with VLA on position; velocity is trajectory-only |
 
 Same position command interfaces cannot be claimed by two active controllers.
 Documented in `config/arm_controllers.yaml`.
@@ -57,7 +57,7 @@ Topic: **`/vla/joint_chunk`** (parameter `chunk_topic`).
 | `joints` | joint1–6 | Claimed position interfaces |
 | `chunk_topic` | `/vla/joint_chunk` | Subscription |
 | `command_timeout_sec` | `0.2` | Hold last command if no fresh chunk |
-| `max_delta_per_sec` | `1.0` | Per-joint rate limit (rad/s) |
+| `max_delta_per_sec` | `1.0` | Per-joint command rate limit (rad/s). Separate from MoveIt planning limits (2 rad/s, 2 rad/s²) |
 
 On chunk timeout or rejected NaN input the controller **holds the last
 commanded (rate-limited) positions**. Note: MicroRosSystem keeps sending

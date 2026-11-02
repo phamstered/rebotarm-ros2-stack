@@ -23,7 +23,7 @@ features:
   - title: ros2_control 真机后端
     details: MicroRosSystem 将 position/effort 接口合成为 MIT JointCommand；可选 Pinocchio 重力前馈与 Joint4/负载标定。
   - title: 仿真与运动规划
-    details: Gazebo Fortress + gz_ros2_control，以及 MoveIt2（mock demo / Gazebo demo）完整规划链路。
+    details: Gazebo Fortress + gz_ros2_control，以及 MoveIt2（mock demo、Gazebo demo、真机 real_move_group）规划链路。
   - title: 多后端与应用层
     details: CAN MIT 驱动、关节状态中继（gazebo / real / ros2_control）、DDS domain bridge；主从遥操只是其中一种用法。
 ---
@@ -49,11 +49,11 @@ features:
 | 能力 | 主要代码位置 |
 |------|----------------|
 | 机器人描述、meshes、Gazebo 世界 | `rebotarm_gazebo` |
-| MoveIt2 规划 / demo / Gazebo 联调 | `rebotarm_moveit_config` |
+| MoveIt2 规划 / mock demo / Gazebo demo / 真机 `real_move_group` | `rebotarm_moveit_config` |
 | ros2_control `SystemInterface`（MIT · HOLD/TRACK/RETURN/DISABLE） | `microros_stm32h723_bridge::MicroRosSystem` |
 | 重力前馈（effort-only，Pinocchio） | `GravityCompensationController` |
 | Joint4 + camera_link 负载多姿态标定 | `Joint4CalibrationController` |
-| 位置遥操 / 轨迹控制器 + 夹爪 | `arm_teleop_controller`、`arm_trajectory_controller`、`gripper_teleop_controller` |
+| 位置遥操 / 轨迹控制器 + 夹爪 | `arm_teleop_controller`、`arm_trajectory_controller`、`gripper_teleop_controller`、`gripper_trajectory_controller` |
 | VLA scheme B（chunk → position） | `VlaPositionController` + `/vla/joint_chunk`（见 [VLA 集成](./vla-integration) / [使用指南](./vla-usage)） |
 | 数据采集质量门禁 | `scripts/check_collection_ready.sh` + [数据采集质量](./data-collection) |
 | CAN 侧 MIT 驱动（非 ros2_control 插件） | `rebotarm_hw_driver` |

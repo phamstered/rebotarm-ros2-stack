@@ -2,7 +2,7 @@
 
 本页是 **录制前 / 录制中** 的质量门禁清单，面向 LeRobot 等下游数据集。栈侧提供 stamp 预检脚本与文档；Desk UI 负责 Episode 开始门禁与提示；LeRobot 丢弃规则由 Desk / 采集适配层实现（本仓库不包含 `rebotarm_vla.lerobot_recorder`）。
 
-相关文档：[VLA 使用指南](./vla-usage)、[VLA 集成](./vla-integration)、[构建与运行](./build-run)。固件与 micro-ROS Agent 时间同步细节由 **rebotarm-executor** 文档补充；当前以「`/stm32/joint_states` stamp 必须非零」为可操作门禁。
+相关文档：[VLA 使用指南](./vla-usage)、[VLA 集成](./vla-integration)、[构建与运行](./build-run)。固件与 micro-ROS Agent 时间同步细节由 **rebotarm-executor** 文档补充。录制脚本的硬门禁仍是「`/stm32/joint_states` stamp 非零」；TF 用的反馈时钟比这一条更严，见下文「反馈时钟」。
 
 ::: tip 一句话
 开录前跑 `./scripts/check_collection_ready.sh`：`header.stamp` 非零、`/stm32/status` 的 `fault_code==0` 且 `mode==TRACK(1)`；始终同时录 status；靠近 HOLD / fault 11 不要录。
@@ -32,7 +32,15 @@ ros2 topic echo /stm32/status --once
 
 `scripts/start_arm_teleop.sh` 在自检通过后会以 `--warn-only` 调用同一脚本（不阻断遥操 bring-up）；**开录前请再跑一次硬门禁**。
 
-Agent epoch / 时间如何配置，见 executor 侧文档（待补充）。在本栈内，可验证的规则只有：**开录前 stamp 必须非零**。
+Agent epoch / 时间如何配置，见 executor 侧文档。`check_collection_ready.sh` 在本栈内只强制 **stamp 非零**，外加 status 的 TRACK 与 `fault_code==0`。
+
+### 反馈时钟（TF / Robot View，不是录制脚本）
+
+`stm32_state_republisher.py` 在转发之前用 `FeedbackClock` 检查**原始** stamp，不用本机收到时间冒充源时间。拒绝：零或非法 stamp、超前超过 50 ms、陈旧达到 1 s、相对上一帧回拨超过 50 ms。重复或轻微乱序的样本直接丢掉。相对单调时钟，ROS 时间跳变超过 250 ms 会重新准入。恢复要求连续 200 ms 的有效递增反馈。静默 1 s 记为过期。
+
+固件诊断 v1（16 字）仍兼容。v2（24 字）还要求固件状态已同步、上次同步年龄 &lt; 15 s、诊断在 3 s 内收到；固件 epoch 变化会重新等待。每个 republisher 在 `~/time_sync_status` 发布只读 JSON（`state`、`generation`、`source_offset_ms`、`feedback_age_ms`）。链路通不等于时间已同步。
+
+通过准入的 `/robot_feedback/joint_states` 保持源频率和源 stamp。只有 `robot_state_publisher` 使用另外的 `/robot_feedback/tf_joint_states`，按单调时钟限到 **20 Hz**。RSP 的 `ignore_timestamp=true` 只绕过它自己的旧 epoch 节流。采集预检通过，不表示 TF 时钟已是 `synchronized`。
 
 ## 2. 始终录 `/stm32/status`，并丢弃坏 Episode
 

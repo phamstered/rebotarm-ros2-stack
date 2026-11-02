@@ -43,7 +43,7 @@ CI 同等覆盖见 [CI 说明](./ci)。
 | Gazebo 从臂 | `./scripts/start_gazebo.sh`（无头：`--headless=True`） | Ubuntu；`ROS_DOMAIN_ID=1` |
 | 从臂 RViz | `./scripts/start_follower_rviz.sh` | 可视化 |
 | MoveIt mock demo | `ros2 launch rebotarm_moveit_config demo.launch.py` | 无 Gazebo / 无硬件 |
-| MoveIt + Gazebo | `ros2 launch rebotarm_moveit_config gazebo_demo.launch.py` | 规划到仿真控制器 |
+| MoveIt + Gazebo | `ros2 launch rebotarm_moveit_config gazebo_demo.launch.py` | 规划到仿真控制器（控制器名仍是 `arm_controller`） |
 
 ### Gazebo 约定
 
@@ -52,6 +52,14 @@ CI 同等覆盖见 [CI 说明](./ci)。
 - `LD_LIBRARY_PATH` 与 `IGN_GAZEBO_SYSTEM_PLUGIN_PATH` 需包含 `/opt/ros/humble/lib`
 - URDF 中 `package://` 需替换为绝对路径（`scripts/prepare_urdf.py`）
 - `base_link` 通过 world fixed joint 固定在世界原点
+
+左腕相机（需要 RealSense 与已构建的 `rebotarm_gazebo`）：
+
+```bash
+ros2 launch rebotarm_gazebo left_wrist_camera.launch.py
+```
+
+固定 `camera_namespace=cameras/left_arm`、`camera_name=wrist`，开启彩色、深度、对齐深度和帧同步。Topic 前缀为 `/cameras/left_arm/wrist/`。`camera_link → left_arm/wrist_link` 的零位姿静态 TF 把 RealSense 光学帧接到 URDF 手眼外参。`link6 → camera_link` 使用 2026-09-12 标定四元数 `xyzw=[0.598366, 0.00397963, 0.801167, 0.00856162]`。真机动态 TF 来自 20 Hz 的 `/robot_feedback/tf_joint_states`，不是未配置硬件时可能冻结的 `/joint_states`。
 
 ## 场景：主从跟随（应用层）
 
@@ -64,6 +72,8 @@ CI 同等覆盖见 [CI 说明](./ci)。
 ## 场景：micro-ROS ros2_control 真机
 
 前置：systemd `micro-ros-agent-stm32h723`（或等价 agent）已占用串口；固件 active mask 满足关节集合（臂 `0x3F`，含夹爪 `0x7F`）。
+
+仓库里的 `systemd/micro-ros-agent-stm32h723.service` 是一台主机的示例：`User=jialiang`、`ROS_DOMAIN_ID=0`、固定 USB by-id 串口、波特率 921600。换机器要改用户和串口。arm launch 默认 `start_agent:=false`，避免再启一个 agent 抢同一串口。
 
 ```bash
 # 带守卫的完整管线（默认 teleop 位置控制器）
@@ -148,7 +158,13 @@ The signal smoke test substitutes a synthetic vendor module and exercises repeat
 ros2 launch rebotarm_moveit_config real_move_group.launch.py
 ```
 
-该入口不激活硬件或切换控制器，只使用 OMPL；复用 micro-ROS URDF、当前相机安装变换、SRDF 和米制夹爪反馈 `/joint_states`。上位机点位执行使用 `/move_action`，再由 MoveIt 调用唯一的 `arm_trajectory_controller/follow_joint_trajectory`，不直接执行模拟 demo。
+该入口不激活硬件、不切换控制器，只使用 OMPL。它复用 micro-ROS URDF、当前相机安装变换、SRDF，以及米制 `/joint_states`。默认只把轨迹交给已在运行的 `arm_trajectory_controller/follow_joint_trajectory`。夹爪轨迹控制器已经激活时：
+
+```bash
+ros2 launch rebotarm_moveit_config real_move_group.launch.py enable_gripper:=true
+```
+
+`enable_gripper:=true` 会把 `gripper_trajectory_controller` 加入 MoveIt 控制器表，并从展开后的硬件 xacro 读取夹爪 scale、offset 和 0–0.05 m 限位。规划组是 `arm`、`gripper`、`arm_with_gripper`。`arm_with_gripper` 可以同时做 `link6` 位姿和夹爪关节目标；没有单独的七轴 IK。六轴规划上限为 2 rad/s、2 rad/s²，默认缩放 1.0；夹爪为 0.02 m/s、0.04 m/s²。这是规划上限，不改 MIT 增益、固件限幅或重力补偿。起点容差 0.01 rad。`demo.launch.py` 仍只用于 mock。
 
 环境碰撞依据 Planning Scene 中的已知障碍物；上位机显示 RGBD 点云不等于点云已注册为碰撞环境。可在无硬件的隔离域运行真实规划/障碍物拒绝验证：
 
@@ -160,7 +176,7 @@ ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_plann
 
 ## 真机轨迹速度前馈与启动连续性
 
-真机 arm profile 的 joint1–joint6 导出 position、effort、velocity 命令接口；`arm_trajectory_controller` 必须认领 position+velocity，保留独立重力 effort 控制器。JTC 插值速度仅在 TRACK 且该接口已认领时发送到 STM32。Teleop/VLA/夹爪的位置控制保持原行为；velocity 接口停止/重新启动时清零残值，HOLD/RETURN/DISABLE 的目标速度恒为 0。旧 position+effort profile 仍兼容，不会从位置差分猜测速度。
+真机 arm profile 的 joint1–joint6 导出 position、effort、velocity 命令接口；启用夹爪时 `gripper_finger_left_joint` 同样导出这三类命令。`arm_trajectory_controller` 与 `gripper_trajectory_controller` 认领 position+velocity，重力控制器仍只认领 effort。JTC 插值速度仅在 TRACK 且该速度接口已认领时发到 STM32。Teleop、VLA 和夹爪 position 控制器不认领 velocity，前馈速度保持 0。velocity 接口停止或重新启动时清零残值，HOLD/RETURN/DISABLE 的目标速度恒为 0。旧 position+effort profile 仍兼容，速度只来自已认领的 velocity 接口。力矩按增益文件限幅转发。
 
 更新插件、xacro 和 arm_controllers.yaml 后，需要按既有安全停机流程重启控制栈并重新激活 JTC，仅编译不改变运行中的接口。不要在机械臂维持输出时直接替换/重启进程。与 Desk 的启动连续性门禁配对使用：参考与实测位置大静差会拒绝新点位，不伪造实际起点、不放宽碰撞/起点校验。当前增益与重力模型参数未自动改变；是否改善低速黏滑须用相同点位、负载和监控采集复核。
 

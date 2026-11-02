@@ -25,10 +25,10 @@ Hardware 导出接口                    Controller 声明需求
 
 `MicroRosSystem` 为 joint1–6（可选夹爪）同时导出：
 
-- command：`position`、`effort`
+- command：`position`、`velocity`、`effort`
 - state：`position`、`velocity`、`effort`
 
-write 时把位置命令、模式增益（HOLD/TRACK/RETURN/IDLE）与 effort 命令合成固定长度 `JointCommand`。
+write 时把位置、已认领的速度（仅 TRACK）、模式增益（HOLD/TRACK/RETURN/DISABLE/IDLE 增益组）与限幅后的 effort 合成固定长度 `JointCommand`。没有轨迹积分项。速度前馈在接口停止/重启时清零；HOLD、RETURN、DISABLE 的目标速度为 0。
 
 ## 配置层级
 
@@ -46,6 +46,7 @@ write 时把位置命令、模式增益（HOLD/TRACK/RETURN/IDLE）与 effort �
   </hardware>
   <joint name="joint1">
     <command_interface name="position"/>
+    <command_interface name="velocity"/>
     <command_interface name="effort"/>
     <state_interface name="position"/>
     <state_interface name="velocity"/>
@@ -57,14 +58,14 @@ write 时把位置命令、模式增益（HOLD/TRACK/RETURN/IDLE）与 effort �
 
 ### 2. 控制器 YAML — Controller 需要的接口
 
-- Gazebo / MoveIt demo：`ros2_controllers.yaml` → `arm_controller`（position）
-- micro-ROS arm：`arm_controllers.yaml` → `arm_teleop_controller` / `arm_trajectory_controller`（position）+ `gravity_compensation_controller`（effort）
+- Gazebo / MoveIt demo：`ros2_controllers.yaml` → `arm_controller`（position）。Gazebo 另有 `gripper_controller`
+- micro-ROS arm：`arm_controllers.yaml` → `arm_teleop_controller` / `vla_position_controller`（position）、`arm_trajectory_controller`（position+velocity）、可选 `gripper_teleop_controller` 或 `gripper_trajectory_controller`，以及 `gravity_compensation_controller`（effort）
 
 `joints` 与接口名必须与 xacro 一致。
 
 ### 3. MoveIt — 只关心 action 名
 
-`moveit_controllers.yaml` 将规划结果发到 `arm_controller` 的 `FollowJointTrajectory`。与 micro-ROS launch 中默认的 `arm_trajectory_controller` 命名不同时，需要改 MoveIt 配置或改 spawner 名称以对齐。
+`moveit_controllers.yaml` 将规划结果发到 `arm_trajectory_controller` 的 `FollowJointTrajectory`。真机 `real_move_group.launch.py` 使用这个名字；`enable_gripper:=true` 时再加入 `gripper_trajectory_controller`。Gazebo 与 MoveIt demo 的控制器仍叫 `arm_controller`，不会自动改成上述名字。
 
 ## 数据流（micro-ROS）
 
@@ -72,10 +73,11 @@ write 时把位置命令、模式增益（HOLD/TRACK/RETURN/IDLE）与 effort �
 命令源（teleop 话题 / trajectory action / MoveIt）
   ▼
 position controller  → 写 joint*/position
+trajectory controller → 另写 joint*/velocity（仅其认领的接口，且仅 TRACK）
 gravity controller   → 写 joint*/effort   （可选）
   ▼
 MicroRosSystem::write()
-  → JointCommand{mode, position, kp, kd, effort, sequence}
+  → JointCommand{mode, position, velocity, kp, kd, effort, sequence}
   ▼
 micro-ros-agent → STM32
   ▼
@@ -89,6 +91,8 @@ joint_state_broadcaster → /joint_states
 | 规则 | 原因 |
 |------|------|
 | `gravity_compensation_controller` 与 `joint4_calibration_controller` 不同时 active | 争用同一 effort 接口 |
+| `arm_teleop_controller`、`arm_trajectory_controller`、`vla_position_controller` 只能有一个 active | 争用 joint1–6 position |
+| `gripper_teleop_controller` 与 `gripper_trajectory_controller` 只能有一个 active | 争用夹爪 position |
 | 串口仅一个 micro-ROS agent | 设备独占 |
 | deactivate 前调用 `safe_stop` | 避免固件命令丢失锁存故障 |
 
