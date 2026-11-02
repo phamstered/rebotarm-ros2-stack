@@ -37,6 +37,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # setup-ros upgrades apt packages. The hosted runner's unrelated Firefox
+      # transition package contacts Snap Store and can fail before ROS installs.
+      # This job is headless; keep that browser package at its runner version.
+      - name: Keep unrelated Firefox snap package unchanged
+        run: sudo apt-mark hold firefox
+
       - name: Setup ROS 2 Humble
         uses: ros-tooling/setup-ros@v0.7
         with:
