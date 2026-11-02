@@ -75,7 +75,7 @@ colcon test && colcon test-result --verbose
 ros2 launch rebotarm_moveit_config real_move_group.launch.py
 ```
 
-该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 1 rad/s、1 rad/s²；配套上位机请求使用 1.0 缩放。此处是规划上限，不会修改固件限幅、MIT 增益或重力补偿。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
+该入口只启动 `move_group`，复用真实 URDF、SRDF 与 `/joint_states`（夹爪单位须已换算成米），不创建硬件/ControllerManager，不自动激活控制器。真实六关节速度、加速度分别限于 2 rad/s、2 rad/s²；配套上位机请求使用 1.0 缩放。此处是规划上限，不会修改固件限幅、MIT 增益或重力补偿。起点容差为 0.01 rad。环境障碍物需通过 Planning Scene 输入，碰撞检查只覆盖模型和已知场景。`demo.launch.py` 仍只用于隔离仿真。
 
 Full steps: **[构建与运行](https://phamstered.github.io/rebotarm-ros2-stack/build-run)** · [docs/build-run.md](docs/build-run.md).
 
@@ -136,3 +136,30 @@ epoch changes (the desktop Bridge handles its own buffer); changing the guard ca
 historical buffers in external consumers. Upgrade requires installing the helper script,
 republisher and launch together and restarting these read-only nodes through the normal
 safe bring-up flow. Controllers and firmware watchdogs are unchanged.
+
+### 六轴规划上限 2/2 的核验
+
+通用 `config/joint_limits.yaml` 与真实 `real_move_group.launch.py` 均显式启用
+六轴 2 rad/s、2 rad/s²，默认速度/加速度缩放均为 1.0。夹爪仍为
+0.02 m/s、0.04 m/s²，MIT Kp/Kd、固件及控制器反馈安全门不随规划上限改变。
+安装新配置后必须经现有受管理规划器流程重启 MoveIt，旧进程的 RobotModel 不会
+因修改 YAML 自动刷新。不能仅凭参数值声称内存中的 RobotModel 已更新。
+
+配置包在存在 `moveit_ros_planning` 时构建只读测试工具 `test_robot_model_limits`，
+从真实启动参数加载 RobotModel，核对六轴以及夹爪实际变量边界；不创建硬件或
+Action 目标。隔离真实规划测试可设置 `ROBOT_MODEL_LIMITS_PROBE` 为该二进制路径，
+在规划前先检查实际模型边界。部署后先核对进程身份、启动参数和模型边界，再做
+只读状态验证；不自动下发机械臂动作。
+
+隔离验证示例（不执行轨迹）：
+
+```bash
+source install/setup.bash
+ROBOT_MODEL_LIMITS_PROBE="$PWD/build/rebotarm_moveit_config/test_robot_model_limits" \
+  ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=226 \
+  python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
+```
+
+实际进程参数也可用 `ros2 param dump /move_group` 只读导出，再以同一参数文件运行
+模型探针；探针关闭参数服务及事件发布，没有控制器、Action 客户端或运动目标。
+运行前须确认导出文件根节点名称与探针节点 `move_group` 一致。
