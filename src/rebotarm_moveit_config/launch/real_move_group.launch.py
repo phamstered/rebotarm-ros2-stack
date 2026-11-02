@@ -25,13 +25,14 @@ def move_group_node(enable_gripper=False):
     semantic.set("name", ET.fromstring(description).get("name"))
     config["robot_description"] = description
     config["robot_description_semantic"] = ET.tostring(semantic, encoding="unicode")
-    # Independent real-hardware timing bounds. Do not inherit simulation's
-    # 50/200 rad/s limits or disabled acceleration bounds.
+    # Explicit arm timing bounds; keep real hardware and shared config aligned.
     config["robot_description_planning"] = {
+        "default_velocity_scaling_factor": 1.0,
+        "default_acceleration_scaling_factor": 1.0,
         "joint_limits": {
             f"joint{index}": {
-                "has_velocity_limits": True, "max_velocity": 1.0,
-                "has_acceleration_limits": True, "max_acceleration": 1.0,
+                "has_velocity_limits": True, "max_velocity": 2.0,
+                "has_acceleration_limits": True, "max_acceleration": 2.0,
             }
             for index in range(1, 7)
         }

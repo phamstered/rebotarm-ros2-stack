@@ -46,6 +46,7 @@
   <!-- 机器人描述来源 -->
   <exec_depend>rebotarm_gazebo</exec_depend>                <!-- URDF + mesh 文件 -->
 
+  <test_depend>moveit_ros_planning</test_depend>
   <test_depend>rclpy</test_depend>
   <test_depend>moveit_msgs</test_depend>
   <test_depend>sensor_msgs</test_depend>

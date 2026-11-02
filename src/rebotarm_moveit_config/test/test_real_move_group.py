@@ -3,6 +3,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import types
+import yaml
 import unittest
 from unittest.mock import patch
 
@@ -47,6 +48,8 @@ class RealMoveGroupTests(unittest.TestCase):
         self.assertEqual(config["trajectory_execution.allowed_start_tolerance"], .01)
         expected_controllers = ["arm_trajectory_controller"] + (["gripper_trajectory_controller"] if enabled else [])
         self.assertEqual(config["moveit_simple_controller_manager"]["controller_names"], expected_controllers)
+        self.assertEqual(config["robot_description_planning"]["default_velocity_scaling_factor"], 1.0)
+        self.assertEqual(config["robot_description_planning"]["default_acceleration_scaling_factor"], 1.0)
         limits = config["robot_description_planning"]["joint_limits"]
         self.assertEqual(set(limits), {f"joint{i}" for i in range(1, 7)} | ({"gripper_finger_left_joint"} if enabled else set()))
         if enabled:
@@ -61,8 +64,19 @@ class RealMoveGroupTests(unittest.TestCase):
             self.assertNotIn("debug_desk.gripper_position_scale", config)
         for value in limits.values():
             self.assertTrue(value["has_acceleration_limits"])
-            self.assertEqual(value["max_velocity"], 1.0)
-            self.assertEqual(value["max_acceleration"], 1.0)
+            self.assertEqual(value["max_velocity"], 2.0)
+            self.assertEqual(value["max_acceleration"], 2.0)
+
+    def test_shared_joint_limits_match_full_scaling_and_arm_bounds(self):
+        config = yaml.safe_load((SOURCE.parents[1] / "config/joint_limits.yaml").read_text())
+        self.assertEqual(config["default_velocity_scaling_factor"], 1.0)
+        self.assertEqual(config["default_acceleration_scaling_factor"], 1.0)
+        self.assertEqual(set(config["joint_limits"]), {f"joint{i}" for i in range(1, 7)})
+        for value in config["joint_limits"].values():
+            self.assertTrue(value["has_velocity_limits"])
+            self.assertTrue(value["has_acceleration_limits"])
+            self.assertEqual(value["max_velocity"], 2.0)
+            self.assertEqual(value["max_acceleration"], 2.0)
 
     def test_real_description_and_bounded_execution_contract(self):
         self.check_config(False)

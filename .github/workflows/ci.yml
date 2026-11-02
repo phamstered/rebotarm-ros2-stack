@@ -37,6 +37,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # setup-ros upgrades apt packages. The hosted runner's unrelated Firefox
+      # transition package contacts Snap Store and can fail before ROS installs.
+      # This job is headless; keep that browser package at its runner version.
+      - name: Keep unrelated Firefox snap package unchanged
+        run: sudo apt-mark hold firefox
+
       - name: Setup ROS 2 Humble
         uses: ros-tooling/setup-ros@v0.7
         with:
@@ -124,7 +130,7 @@ jobs:
           set -e
           source "/opt/ros/${ROS_DISTRO}/setup.bash"
           source install/setup.bash
-          ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
+          ROBOT_MODEL_LIMITS_PROBE="$PWD/build/rebotarm_moveit_config/test_robot_model_limits" ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=226 python3 src/rebotarm_moveit_config/test/test_real_moveit_planning.py
 
       - name: Upload pytest / colcon logs on failure
         if: failure()

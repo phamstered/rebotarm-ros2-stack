@@ -38,6 +38,9 @@ def main():
     module.move_group_node(True); module.Node = original_node
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         yaml.safe_dump({"move_group": {"ros__parameters": params[0]}}, f); parameter_path = f.name
+    probe = os.environ.get("ROBOT_MODEL_LIMITS_PROBE")
+    if probe:
+        subprocess.run([probe, "--ros-args", "--params-file", parameter_path], check=True)
     log = open("/tmp/codex-real-moveit-planning.log", "w")
     process = subprocess.Popen(["/opt/ros/humble/lib/moveit_ros_move_group/move_group", "--ros-args", "--params-file", parameter_path, "--log-level", "moveit_constraint_samplers.constraint_sampler_manager:=debug"], stdout=log, stderr=log)
     rclpy.init(); node = Node("isolated_moveit_planning_probe")
@@ -89,8 +92,8 @@ def main():
         for point in points:
             stamp=point.time_from_start.sec*1000000000+point.time_from_start.nanosec
             assert stamp>previous;previous=stamp
-            assert len(point.velocities)==6 and all(abs(v)<=1.+1e-6 for v in point.velocities)
-            assert len(point.accelerations)==6 and all(abs(a)<=1.+1e-6 for a in point.accelerations)
+            assert len(point.velocities)==6 and all(abs(v)<=2.+1e-6 for v in point.velocities)
+            assert len(point.accelerations)==6 and all(abs(a)<=2.+1e-6 for a in point.accelerations)
         # Target a known reachable full pose using MoveIt's own FK. The target
         # differs from start, so a zero-motion shortcut cannot satisfy the test.
         def tip_pose(values):
@@ -136,7 +139,7 @@ def main():
                 assert len(point.positions) == len(point.velocities) == len(point.accelerations) == len(expected)
                 for index, name in enumerate(trajectory.joint_names):
                     assert all(math.isfinite(values[index]) for values in (point.positions, point.velocities, point.accelerations))
-                    velocity, acceleration = (.02, .04) if name == "gripper_finger_left_joint" else (1., 1.)
+                    velocity, acceleration = (.02, .04) if name == "gripper_finger_left_joint" else (2., 2.)
                     assert abs(point.velocities[index]) <= velocity + 1e-6
                     assert abs(point.accelerations[index]) <= acceleration + 1e-6
                     if name == "gripper_finger_left_joint":
