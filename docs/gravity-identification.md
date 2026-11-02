@@ -30,7 +30,7 @@
 |----|-----|
 | Action 类型 | `microros_stm32h723_bridge/action/GravityIdentification` |
 | 服务器名 | `/StartGravityID` |
-| 包内文件 | `action/GravityIdentification.action`（新建） |
+| 包内文件 | `src/plugin/microros_stm32h723_bridge/action/GravityIdentification.action` |
 
 ### 2.2 Goal
 

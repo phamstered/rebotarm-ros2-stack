@@ -87,15 +87,17 @@ python3 scripts/monitor_gripper.py --duration 60 --domain 0
 
 - 1:7 映射：leader joint1-6 → follower joint1-6，leader joint7_left → follower gripper_finger_left_joint
 - 符号翻转：`follower_pos = sign * leader_pos + offset`
-- 夹爪缩放：`gripper_pos = 0.0127 * leader_gripper_pos` (rad → m)
-- Real 模式：`motor_pos = prismatic_pos * 100.0` (m → rad)
-- sign 配置在 `relay.yaml` 中，经实际校准确认
+- 夹爪缩放以对应 YAML 的 `sign` / `offset` 为准，不要写成单一常数
+- CAN real 模式：`motor_pos = prismatic_pos * -133.0`（m → rad，`rebotarm_hw_driver` 的 `_GRIPPER_POS_SCALE`）。`_GRIPPER_KP = 100.0` 是 MIT 刚度，不是位移比例
+- sign 配置在各 `relay*.yaml` 中，经实际校准确认
 
 ### 夹爪映射校准
 
 **配置文件**:
-- Gazebo: `src/joint_state_relay/config/relay.yaml` (sign=0.0127, offset=0.0)
-- Real: `src/joint_state_relay/config/relay_real.yaml` (sign=0.0212, offset=0.003619)
+- Gazebo relay：`src/joint_state_relay/config/relay.yaml`（`gripper_finger_left_joint` sign=0.0127, offset=0.0，follower 0–0.0715 m）
+- CAN real relay：`src/joint_state_relay/config/relay_real.yaml`（sign=0.047376, offset=0.0）
+- micro-ROS teleop relay：`src/joint_state_relay/config/relay_microros_arm.yaml`（sign=0.053150073760, offset=-0.000278293135，follower 0–0.05 m，`max_velocity=1.0` rad/s，`gripper_max_velocity=0.02` m/s）
+- micro-ROS 硬件：`rebotarm.arm.micro_ros.xacro` / arm launch 的 `gripper_position_scale=-0.008612826752`、`gripper_position_offset=0.004282757541`，关节命令范围 0–0.05 m。这与 CAN 的 −133 比例不是同一条链路
 
 **变换公式**:
 ```
@@ -107,14 +109,14 @@ follower_pos(m) = sign × leader_pos(rad) + offset
 - Follower: 米 (m) - 直线关节 (prismatic)
 - sign: m/rad
 
-**真实从臂驱动转换**:
+**CAN 从臂驱动转换**（`rebotarm_hw_driver`，不是 micro-ROS）:
 ```python
 motor_pos = prismatic_pos(m) × -133.0 → 电机位置(rad)
 ```
 
-**完整转换链**:
+**CAN 完整转换链**:
 ```
-主臂角度(rad) → sign → 夹爪位移(m) → ×(-133) → 电机角度(rad)
+主臂角度(rad) → relay_real.yaml 的 sign/offset → 夹爪位移(m) → ×(-133) → 电机角度(rad)
 ```
 
 **校准工具**:

@@ -5,8 +5,8 @@
 This repository is a ROS 2 Humble workspace for the **reBotArm B601 control stack** (description, simulation, ros2_control / micro-ROS, MoveIt, CAN driver, joint relay). Packages live under `src/`:
 
 - `rebotarm_gazebo/`: URDF/Xacro, meshes, Gazebo Fortress worlds, controllers, RViz helpers.
-- `rebotarm_moveit_config/`: MoveIt2 planning config, mock demo and Gazebo demo launches.
-- `plugin/microros_stm32h723_bridge/`: ros2_control `MicroRosSystem` hardware plugin, gravity and Joint4 calibration controllers, msgs, launches, mock/smoke scripts.
+- `rebotarm_moveit_config/`: MoveIt2 planning config, mock demo, Gazebo demo, and real `real_move_group.launch.py` (arm / gripper / `arm_with_gripper`; 2 rad/s and 2 rad/s² arm bounds).
+- `plugin/microros_stm32h723_bridge/`: ros2_control `MicroRosSystem` hardware plugin, gravity, Joint4 calibration, and `VlaPositionController`, msgs, launches, mock/smoke scripts. No trajectory-integral compensation.
 - `rebotarm_hw_driver/`: CAN MIT follower driver node (`/joint_commands` → motors).
 - `joint_state_relay/`: leader→follower joint mapping (`gazebo` / `real` / `ros2_control` modes), DDS domain bridge, gripper calibration helper.
 
@@ -35,8 +35,9 @@ Package-local automated tests live under `test/`:
 
 - `joint_state_relay/test/` — pytest (relay YAML contracts + gripper mapping helpers)
 - `plugin/microros_stm32h723_bridge/test/` — ament pytest (gains / msg / launch source contracts)
+- `rebotarm_gazebo/test/` and `rebotarm_moveit_config/test/` — camera launch, real MoveIt config, and planning-limit contracts
 
-Name Python tests `test_<behavior>.py`. GitHub Actions (`.github/workflows/ci.yml`) runs `colcon build` plus these suites on Ubuntu 22.04 / ROS 2 Humble; it does **not** exercise hardware, Gazebo GUI, or Jetson bring-up. For new behavior, extend those tests, then locally: build the affected package, run `colcon test` (or the matching pytest path), and smoke-test the relevant launch mode. Hardware changes should document the device, ROS domain, and observed result.
+Name Python tests `test_<behavior>.py`. GitHub Actions (`.github/workflows/ci.yml`) runs `colcon build`, those suites, and isolated mock-MCU / MoveIt planning smokes on Ubuntu 22.04 / ROS 2 Humble. The published `ghcr.io/phamstered/rebotarm-ros2-ci` image is not what `ci.yml` runs yet. CI does **not** exercise hardware, Gazebo GUI, or Jetson bring-up. For new behavior, extend those tests, then locally: build the affected package, run `colcon test` (or the matching pytest path), and smoke-test the relevant launch mode. Hardware changes should document the device, ROS domain, and observed result.
 
 ## Commit & Pull Request Guidelines
 

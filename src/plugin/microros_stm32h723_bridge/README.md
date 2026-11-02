@@ -403,10 +403,13 @@ and coordinates the arm and gripper FollowJointTrajectory controllers. The
 real MoveIt launch never starts or switches controllers. Without
 `enable_gripper:=true`, its controller mapping remains arm-only.
 
-Robot state publisher consumes `/robot_feedback/joint_states`, a read-only
-conversion of live STM32 feedback. This keeps gripper TF in metres while
-avoiding stale ros2_control feedback after hardware deactivation. State-only
-mode still publishes its public `/joint_states` relay.
+`robot_feedback_republisher` converts live STM32 feedback to
+`/robot_feedback/joint_states` at the admitted source rate. Robot state
+publisher consumes the separate `/robot_feedback/tf_joint_states` stream,
+which the same node limits to 20 Hz on a monotonic clock after timestamp
+admission. This keeps gripper TF in metres while avoiding stale ros2_control
+feedback after hardware deactivation. State-only mode still publishes its
+public `/joint_states` relay, and that relay is also timestamp-gated.
 
 Position control does not detect a successful grasp: obstruction or a missed
 target must be reported as failure, not interpreted as grasp completion.
