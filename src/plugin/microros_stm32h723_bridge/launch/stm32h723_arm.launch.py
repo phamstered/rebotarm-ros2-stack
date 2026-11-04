@@ -70,7 +70,7 @@ def generate_launch_description():
     ]))
     gripper_trajectory_active = IfCondition(PythonExpression([
         "'", enable_gripper, "'.lower() == 'true' and '",
-        position_controller, "' == 'trajectory' and '",
+        position_controller, "' in ('trajectory', 'teaching') and '",
         state_only, "' == 'false'",
     ]))
 
@@ -79,6 +79,7 @@ def generate_launch_description():
             FindExecutable(name='xacro'), ' ', xacro_file,
             ' gains_file:=', gains_file,
             ' enable_gripper:=', enable_gripper,
+            ' drag_teaching:=', PythonExpression(["'true' if '", position_controller, "' == 'teaching' else 'false'"]),
         ])
     }
 
@@ -93,7 +94,7 @@ def generate_launch_description():
             'position_controller',
             default_value='teleop',
             description='Active position controller: teleop, trajectory, or none.',
-            choices=['teleop', 'trajectory', 'none'],
+            choices=['teleop', 'trajectory', 'teaching', 'none'],
         ),
         DeclareLaunchArgument(
             'enable_gravity_controller',

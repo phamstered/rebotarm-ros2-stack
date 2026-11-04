@@ -1,0 +1,15 @@
+# Hand-guiding: no arm position stiffness in any mode. Gripper uses the
+# calibrated gripper profile. safe_stop disables in place; support the arm.
+return:
+  kp: [0, 0, 0, 0, 0, 0, 0]
+  kd: [1, 1, 1, 1, 1, 1, 1]
+hold:
+  kp: [0, 0, 0, 0, 0, 0, 2]
+  kd: [1, 1, 1, 1, 1, 1, 0.5]
+track:
+  kp: [0, 0, 0, 0, 0, 0, 100]
+  kd: [1, 1, 1, 1, 1, 1, 3]
+idle:
+  kp: [0, 0, 0, 0, 0, 0, 0]
+  kd: [1, 1, 1, 1, 1, 1, 1]
+effort_limits: [5, 5, 5, 3, 3, 3, 2]

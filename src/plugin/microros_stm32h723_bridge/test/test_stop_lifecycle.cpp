@@ -35,6 +35,14 @@ struct MicroRosSystemTestAccess
     system.return_gains_.kd.fill(1.0);
   }
 
+  static void teaching(MicroRosSystem & system)
+  {
+    system.drag_teaching_ = true;
+    system.velocity_available_[6] = true;
+    system.return_gains_.kp.fill(0.0);
+    system.track_gains_.kp.fill(0.0);
+    system.track_gains_.kp[6] = 100.0;
+  }
   static void velocity(MicroRosSystem & system, double value) {system.command_velocity_.fill(value);}
   static void effort(MicroRosSystem & system, double value) {system.command_effort_.fill(value);}
   static void legacy(MicroRosSystem & system) {system.velocity_available_.fill(false);}
@@ -315,6 +323,20 @@ TEST(TrajectoryEffort, ForwardsControllerEffortWithoutAccumulationAndDisableZero
     EXPECT_FLOAT_EQ(message.kp[i], 0.0F); EXPECT_FLOAT_EQ(message.kd[i], 0.0F);
     EXPECT_FLOAT_EQ(message.effort[i], 0.0F);
   }
+}
+
+
+TEST(DragTeaching, RejectsArmClaimsButAllowsIndependentGripper)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::teaching(system);
+  EXPECT_EQ(system.prepare_command_mode_switch({"joint1/position"}, {}), hardware_interface::return_type::ERROR);
+  EXPECT_EQ(system.prepare_command_mode_switch({"joint2/position", "joint2/velocity"}, {}), hardware_interface::return_type::ERROR);
+  EXPECT_EQ(system.perform_command_mode_switch({"gripper_finger_left_joint/position", "gripper_finger_left_joint/velocity"}, {}), hardware_interface::return_type::OK);
+  MicroRosSystemTestAccess::returning(system);
+  MicroRosSystemTestAccess::write(system);
+  MicroRosSystemTestAccess::assert_disabled(system);
 }
 
 }  // namespace microros_stm32h723_bridge

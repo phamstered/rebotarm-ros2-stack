@@ -35,11 +35,11 @@ LAST_TOPIC_SAMPLE=""
 usage() {
     echo "Usage: $0 [options]"
     echo
-    echo "  --position-controller=teleop|trajectory|none  Select the position controller (default: teleop)."
+    echo "  --position-controller=teleop|trajectory|teaching|none  Select the position controller (default: teleop)."
     echo "  --gravity=true|false  Enable the independent effort controller (default: false)."
     echo "  --joint4-calibration=true|false  Run guarded joint4 calibration (default: false)."
     echo "  --gripper=true|false  Enable calibrated gripper for teleop or trajectory (default: false)."
-    echo "  --mode=teleop|gravity|calibration  Backward-compatible preset alias."
+    echo "  --mode=teleop|gravity|calibration|teaching  Backward-compatible preset alias."
     echo "  --start-leader=true   Start robo_driver in /leader namespace with lock disabled."
     echo "  --start-leader=false  Require an existing /leader/joint_states publisher (default)."
     echo "  --start-controller=true   Start ros2_control when it is not already running (default)."
@@ -63,6 +63,12 @@ for argument in "$@"; do
                     POSITION_CONTROLLER="teleop"
                     ENABLE_GRAVITY_CONTROLLER="false"
                     ENABLE_JOINT4_CALIBRATION="false"
+                    ;;
+                teaching)
+                    POSITION_CONTROLLER="teaching"
+                    ENABLE_GRAVITY_CONTROLLER="true"
+                    ENABLE_JOINT4_CALIBRATION="false"
+                    ENABLE_GRIPPER="true"
                     ;;
                 gravity)
                     POSITION_CONTROLLER="none"
@@ -144,7 +150,7 @@ for argument in "$@"; do
 done
 
 if [[ "$POSITION_CONTROLLER" != "teleop" && \
-    "$POSITION_CONTROLLER" != "trajectory" && \
+    "$POSITION_CONTROLLER" != "trajectory" && "$POSITION_CONTROLLER" != "teaching" && \
     "$POSITION_CONTROLLER" != "none" ]]; then
     echo "ERROR: --position-controller must be teleop, trajectory, or none." >&2
     exit 2
@@ -173,6 +179,10 @@ if [[ "$ENABLE_GRIPPER" != "true" && "$ENABLE_GRIPPER" != "false" ]]; then
     echo "ERROR: --gripper must be true or false." >&2
     exit 2
 fi
+if [[ "$POSITION_CONTROLLER" == "teaching" && ( "$ENABLE_GRAVITY_CONTROLLER" != "true" || "$ENABLE_GRIPPER" != "true" || "$ENABLE_JOINT4_CALIBRATION" != "false" ) ]]; then
+    echo "ERROR: teaching requires gravity=true, gripper=true, calibration=false." >&2
+    exit 2
+fi
 if [[ "$ENABLE_GRIPPER" == "true" && "$POSITION_CONTROLLER" == "none" ]]; then
     echo "ERROR: Gripper control requires --position-controller=teleop or trajectory." >&2
     exit 2
@@ -189,8 +199,11 @@ if [[ "$ENABLE_GRIPPER" == "true" ]]; then
     REQUIRED_ACTIVE_JOINT_MASK=$((0x7F))
     GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/arm_gripper_mit_gains.yaml"
 fi
+if [[ "$POSITION_CONTROLLER" == "teaching" ]]; then
+    GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/teaching_mit_gains.yaml"
+fi
 GRIPPER_CONTROLLER="gripper_teleop_controller"
-if [[ "$POSITION_CONTROLLER" == "trajectory" ]]; then
+if [[ "$POSITION_CONTROLLER" == "trajectory" || "$POSITION_CONTROLLER" == "teaching" ]]; then
     GRIPPER_CONTROLLER="gripper_trajectory_controller"
 fi
 SELECTED_EFFORT_CONTROLLER=""
@@ -642,6 +655,10 @@ existing_controllers=$(arm_domain_controllers) || {
     echo "ERROR: Cannot determine ControllerManager ROS domain; refusing startup." >&2
     exit 1
 }
+if [[ "$POSITION_CONTROLLER" == "teaching" && -n "$existing_controllers" ]]; then
+    echo "ERROR: teaching requires a fresh control session with verified teaching gains; stop the existing session first." >&2
+    exit 1
+fi
 if [[ -n "$existing_controllers" ]]; then
     echo "Using existing ros2_control_node in ROS_DOMAIN_ID=$ROS_DOMAIN_ID (PID $existing_controllers)."
 elif [[ "$START_CONTROLLER" == "true" ]]; then
@@ -720,9 +737,9 @@ while (( SECONDS < controller_deadline )); do
                 --controller-manager "$CONTROLLER_MANAGER" 2>&1
         )" && \
         controller_has_state joint_state_broadcaster active "$controller_list" && \
-        { [[ "$POSITION_CONTROLLER" == "none" ]] || \
+        { [[ "$POSITION_CONTROLLER" == "none" || "$POSITION_CONTROLLER" == "teaching" ]] || \
           controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list"; } && \
-        { [[ "$POSITION_CONTROLLER" == "none" ]] || \
+        { [[ "$POSITION_CONTROLLER" == "none" || "$POSITION_CONTROLLER" == "teaching" ]] || \
           controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list"; } && \
         controller_has_state gravity_compensation_controller "$GRAVITY_STATE" "$controller_list" && \
         controller_has_state joint4_calibration_controller "$CALIBRATION_STATE" "$controller_list" && \
@@ -733,9 +750,9 @@ while (( SECONDS < controller_deadline )); do
 done
 controller_list="$(strip_ansi <<<"$controller_list")"
 if ! controller_has_state joint_state_broadcaster active "$controller_list" || \
-    { [[ "$POSITION_CONTROLLER" != "none" ]] && \
+    { [[ "$POSITION_CONTROLLER" != "none" && "$POSITION_CONTROLLER" != "teaching" ]] && \
       ! controller_has_state arm_teleop_controller "$TELEOP_STATE" "$controller_list"; } || \
-    { [[ "$POSITION_CONTROLLER" != "none" ]] && \
+    { [[ "$POSITION_CONTROLLER" != "none" && "$POSITION_CONTROLLER" != "teaching" ]] && \
       ! controller_has_state arm_trajectory_controller "$TRAJECTORY_STATE" "$controller_list"; } || \
     ! controller_has_state gravity_compensation_controller "$GRAVITY_STATE" "$controller_list" || \
     ! controller_has_state joint4_calibration_controller "$CALIBRATION_STATE" "$controller_list" || \
@@ -787,7 +804,11 @@ hardware_interfaces="$(
 )"
 interfaces_valid="true"
 for joint_index in {1..6}; do
-    if [[ "$POSITION_CONTROLLER" != "none" ]] && \
+    if [[ "$POSITION_CONTROLLER" == "teaching" ]] &&
+        grep -Eq "joint${joint_index}/(position|velocity) \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
+        interfaces_valid="false"
+    fi
+    if [[ "$POSITION_CONTROLLER" != "none" && "$POSITION_CONTROLLER" != "teaching" ]] && \
         ! grep -Eq "joint${joint_index}/position \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
         interfaces_valid="false"
     fi
@@ -801,7 +822,7 @@ if [[ "$ENABLE_GRIPPER" == "true" ]] && \
         <<<"$hardware_interfaces"; then
     interfaces_valid="false"
 fi
-if [[ "$ENABLE_GRIPPER" == "true" && "$POSITION_CONTROLLER" == "trajectory" ]] && \
+if [[ "$ENABLE_GRIPPER" == "true" && "$GRIPPER_CONTROLLER" == "gripper_trajectory_controller" ]] && \
     ! grep -Eq "gripper_finger_left_joint/velocity \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
     interfaces_valid="false"
 fi

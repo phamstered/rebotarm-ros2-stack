@@ -56,6 +56,7 @@ target_include_directories(${HARDWARE_LIBRARY} PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 ament_target_dependencies(${HARDWARE_LIBRARY}
+  rcl_interfaces
   hardware_interface
   pluginlib
   rclcpp
@@ -133,6 +134,7 @@ install(TARGETS ${GRAVITY_IDENTIFICATION_NODE}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 install(PROGRAMS
+  scripts/teaching_gripper.py
   scripts/mock_stm32_node.py
   scripts/mock_vla_chunk_publisher.py
   scripts/single_motor_smoke_test.py
@@ -140,11 +142,12 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(FILES scripts/feedback_clock.py DESTINATION lib/${PROJECT_NAME})
+install(FILES scripts/feedback_clock.py scripts/teaching_core.py DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_pytest_test(test_teaching test/test_teaching.py)
   ament_add_pytest_test(test_config test/test_config.py)
   ament_add_pytest_test(test_feedback_clock test/test_feedback_clock.py)
   ament_add_pytest_test(test_feedback_clock_ros test/test_feedback_clock_ros.py

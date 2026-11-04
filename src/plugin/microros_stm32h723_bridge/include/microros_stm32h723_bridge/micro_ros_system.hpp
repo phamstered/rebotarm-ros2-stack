@@ -137,6 +137,7 @@ private:
   uint32_t disable_sequence_{0};
   uint32_t required_joint_mask_{0x7FU};
   uint32_t configured_joint_mask_{0U};
+  bool drag_teaching_{false};
   double zero_tolerance_{0.03};
   std::string command_topic_{"/stm32/joint_commands"};
   std::string state_topic_{"/stm32/joint_states"};

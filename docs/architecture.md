@@ -104,3 +104,8 @@ ros2_control 控制器层（controller_manager）
 - Pinocchio（重力与标定）
 - micro-ROS Agent（串口 XRCE-DDS；本仓库不包含固件）
 - 可选外部：`stararm102_description` / `robo_driver`（主臂，Jetson overlay）
+
+
+拖动示教是独立控制配置：`position_controller=teaching`，六轴只接受重力 effort，
+夹爪拥有独立 position+velocity JTC。硬件专用标记校验柔顺增益并拒绝六轴位置接口。
+桌面 SSH 调用固定夹爪适配器，通过有界、可取消的 ROS Action 控制夹爪；不发布 MIT 帧。
