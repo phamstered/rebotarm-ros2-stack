@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import os
 import subprocess
 from types import SimpleNamespace
 
@@ -10,6 +11,14 @@ ROOT = Path(__file__).parents[1]
 spec = importlib.util.spec_from_file_location('teaching_core', ROOT / 'scripts/teaching_core.py')
 core = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(core)
+
+
+def test_ros_entrypoint_is_executable_for_symlink_install():
+    entrypoint = ROOT / 'scripts/teaching_gripper.py'
+    assert os.access(entrypoint, os.X_OK)
+    result = subprocess.run([str(entrypoint), '--help'], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert '{move,cancel,check}' in result.stdout
 
 
 def test_mixed_gains_leave_arm_compliant_and_do_not_home_or_close_on_stop():
