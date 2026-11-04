@@ -70,7 +70,7 @@ def generate_launch_description():
     ]))
     gripper_trajectory_active = IfCondition(PythonExpression([
         "'", enable_gripper, "'.lower() == 'true' and '",
-        position_controller, "' in ('trajectory', 'teaching') and '",
+        position_controller, "' == 'trajectory' and '",
         state_only, "' == 'false'",
     ]))
 

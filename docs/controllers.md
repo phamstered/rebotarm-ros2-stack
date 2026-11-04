@@ -151,32 +151,32 @@ micro-ROS 一键守卫启动：`./scripts/start_arm_teleop.sh`（九段自检：
 DISABLE 一旦发出就保持到下一次 hardware `on_activate`：每帧序号递增，位置、速度、kp、kd、effort 为 0。当前实现不会在 DISABLE 后再跳回 RETURN，也没有轨迹积分项。未进容差时 RETURN 保持挂起，`start_arm_teleop.sh` 的退出清理不会在缺少 `mode=DISABLE, fault_code=0` 时拆掉控制器。现场被托住的臂可以另调 `/microros_stm32h723_hardware/disable` 直接释放输出；这不是回零成功。
 
 
-## 拖动示教与独立夹爪
+## 拖动示教与手动夹爪
 
 `./scripts/start_arm_teleop.sh --mode=teaching --clean=false` 使用专用
-`teaching_mit_gains.yaml`：六轴所有模式 Kp=0、Kd=1，重力 effort 控制器 active，
-独立 `gripper_trajectory_controller` 控制标定夹爪。必须先按现有安全流程停止旧控制栈；
-该模式拒绝复用既有 ControllerManager。仅在现场支撑且操作区域安全时启动。
+`teaching_mit_gains.yaml`：六轴所有模式 Kp=0、Kd=1，重力 effort 控制器 active。
+夹爪所有模式 Kp=0、Kd=0、effort limit=0，并在硬件写帧中强制清零夹爪所有命令字段。
+夹爪不主动保持开度，可用手拨动；零输出不消除减速机构摩擦，也不保证松手后夹持物体。
 
-硬件以只读 `drag_teaching` 参数标识已验证的专用配置；拒绝六轴 position/velocity
-接口认领，避免拖动时切回刚性跟踪。夹爪沿用现有夹爪 HOLD/TRACK 增益及 effort 限幅。
-六轴前馈限幅沿用纯重力模式的每轴 ±10 N·m，夹爪单独保持 ±2 N·m。
-不能复用普通位置模式的六轴 5/3 N·m 限幅：零 Kp 下，重力前馈被截断后没有位置反馈力矩补足。
-例如已观察姿态的 Joint3 模型需求为 −7.718 N·m，旧示教配置只发送 −5 N·m；
-修复后保留该前馈需求，同时仍执行上述限幅。此限幅是软件前馈边界，不代表新增额定负载能力。
-启动初始化为当前实测位置，不自动闭爪。该模式不是力控夹持，也不自动录制示教轨迹。
+该模式不启动夹爪轨迹/遥操控制器，硬件拒绝七轴 position/velocity 与夹爪 effort
+命令接口认领。七轴状态接口与标定反馈保留，可保存六轴姿态和实测夹爪开度。
+必须先按现有安全流程停止旧栈；拒绝复用已有 ControllerManager。
+仅在现场支撑机械臂及物体、操作区域安全时启动。
 
-配套桌面通过已安装的 `teaching_gripper.py` 发送单关节 FollowJointTrajectory。
-每个操作使用独立 UUID；目标为 0–0.05 m 的单指行程，5 秒三次轨迹满足既有
-20 mm/s、40 mm/s² 上限。每次校验专用模式、重力/夹爪控制器、无六轴位置所有者、
-新鲜米制反馈和七轴无故障 TRACK；执行中继续检查反馈与控制器。取消仅作用于同一 UUID。
-动作成功后须确认夹爪连续 200 ms 停稳；不要求正在手动拖动的六轴停稳。
-完成不表示夹持成功。请求超时或反馈失效时请求取消，无法核验时明确报告停止未确认。
+硬件只读 `drag_teaching` 与 `manual_teaching_gripper` 参数共同标识已验证配置。
+`teaching_gripper.py check-manual` 只读核验参数、无夹爪命令所有者、重力激活、
+新鲜米制反馈和七轴无故障 TRACK。兼容 `check` 同样核验手动配置；旧 `move/cancel`
+请求在初始化 ROS 前明确拒绝。配套 Status 移除电动夹爪控件；电动抓放使用 Trajectory。
 
-RETURN 增益全部为零，所以 `safe_stop` 在此模式直接进入 DISABLE，**不会主动回零**。
-退出或切换前必须托住机械臂及物体；夹爪也会失去电机输出。模式/夹爪请求共用
-桌面 `arm-mode.lock`，夹爪运动期间先取消并等待结束，再关闭控制环境。
-手动拖动没有运动规划器避碰，重力模型与负载变化可能造成漂移。
+六轴前馈限幅沿用纯重力模式的每轴 ±10 N·m，夹爪为零。
+不能复用普通位置模式的六轴 5/3 N·m 限幅：零 Kp 下没有位置反馈力矩补足截断的重力。
+已观察姿态的 Joint3 模型需求为 −7.718 N·m，保留该前馈需求；此限幅不代表新增额定负载能力。
+
+RETURN 增益全部为零，`safe_stop` 直接进入 DISABLE，**不会主动回零**。
+退出或切换前必须托住机械臂与物体，等待 DISABLE 反馈后清理进程。
+手动拖动没有规划器避碰，重力模型误差与负载变化可能造成漂移。
 
 验证入口：`test_teaching.py`、硬件 gtest `DragTeaching` 和隔离域
-`test/smoke_teaching.py`（模拟 MCU）。这些不代表真实机械臂拖动手感、夹持力或负载验证。
+`test/smoke_teaching.py`（模拟 MCU）：检查六轴 >5 N·m 重力链路、夹爪零输出、
+模拟手动开度的标定反馈、旧电动请求拒绝、控制器抢占拒绝及退出无 RETURN。
+这些不代表真实机械臂拖动手感、机械回驱阻力或负载验证。

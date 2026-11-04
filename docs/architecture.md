@@ -106,6 +106,4 @@ ros2_control 控制器层（controller_manager）
 - 可选外部：`stararm102_description` / `robo_driver`（主臂，Jetson overlay）
 
 
-拖动示教是独立控制配置：`position_controller=teaching`，六轴只接受重力 effort，
-夹爪拥有独立 position+velocity JTC。硬件专用标记校验柔顺增益并拒绝六轴位置接口。
-桌面 SSH 调用固定夹爪适配器，通过有界、可取消的 ROS Action 控制夹爪；不发布 MIT 帧。
+拖动示教使用 `position_controller=teaching`：六轴只接受重力 effort，夹爪保持零主动输出并提供标定反馈。硬件校验专用增益，拒绝七轴 position/velocity 及夹爪 effort 控制器接管；不启动夹爪 JTC。桌面通过只读适配器核验 `drag_teaching` / `manual_teaching_gripper` 标记、控制器与反馈，保存七轴实测姿态；不发送夹爪运动目标。

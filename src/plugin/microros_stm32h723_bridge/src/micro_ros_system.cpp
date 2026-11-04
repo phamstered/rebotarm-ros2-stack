@@ -151,15 +151,19 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
             throw std::runtime_error("drag teaching requires zero arm stiffness and positive damping");
           }
         }
+        if (gains->kp[6] != 0.0 || gains->kd[6] != 0.0) {
+          throw std::runtime_error("manual teaching requires zero gripper stiffness and damping");
+        }
       }
-      if (return_gains_.kp[6] != 0.0 || !(track_gains_.kp[6] > 0.0)) {
-        throw std::runtime_error("drag teaching requires gripper control and no RETURN stiffness");
+      if (effort_limits_[6] != 0.0) {
+        throw std::runtime_error("manual teaching requires zero gripper effort limit");
       }
     }
     node_ = std::make_shared<rclcpp::Node>("microros_stm32h723_hardware");
     rcl_interfaces::msg::ParameterDescriptor teaching_descriptor;
     teaching_descriptor.read_only = true;
     node_->declare_parameter("drag_teaching", drag_teaching_, teaching_descriptor);
+    node_->declare_parameter("manual_teaching_gripper", drag_teaching_, teaching_descriptor);
     const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).best_effort();
     command_publisher_ = node_->create_publisher<msg::JointCommand>(command_topic_, qos);
     state_subscription_ = node_->create_subscription<sensor_msgs::msg::JointState>(
@@ -242,8 +246,11 @@ hardware_interface::return_type MicroRosSystem::prepare_command_mode_switch(
       velocities |= bit;
     }
   }
-  if (drag_teaching_ && ((positions | velocities) & 0x3fU) != 0U) {
-    RCLCPP_ERROR(node_->get_logger(), "Arm position/velocity controllers are forbidden in drag teaching");
+  if (drag_teaching_ && ((positions | velocities) != 0U ||
+    std::find(start_interfaces.begin(), start_interfaces.end(),
+      "gripper_finger_left_joint/effort") != start_interfaces.end()))
+  {
+    RCLCPP_ERROR(node_->get_logger(), "Position/velocity and gripper effort controllers are forbidden in manual teaching");
     return hardware_interface::return_type::ERROR;
   }
   // MIT velocity feed-forward is only valid alongside a position owner.
@@ -426,7 +433,9 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
   const auto & gains = selected_gains();
   for (std::size_t i = 0; i < kJointCount; ++i) {
     const bool configured = (configured_joint_mask_ & (1U << i)) != 0U;
-    if (!configured || message.mode == msg::JointCommand::MODE_DISABLE) {
+    if (!configured || message.mode == msg::JointCommand::MODE_DISABLE ||
+      (drag_teaching_ && i == 6))
+    {
       message.position[i] = 0.0F;
       message.velocity[i] = 0.0F;
       message.kp[i] = 0.0F;
