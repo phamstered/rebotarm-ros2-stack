@@ -49,7 +49,7 @@ def test_state_only_launch_uses_read_only_republisher():
     assert "'enable_gravity_controller'" in launch_source
     assert "'enable_joint4_calibration'" in launch_source
     assert "'enable_gripper'" in launch_source
-    assert "choices=['teleop', 'trajectory', 'none']" in launch_source
+    assert "choices=['teleop', 'trajectory', 'teaching', 'none']" in launch_source
     assert 'condition=teleop_active' in launch_source
     assert 'condition=trajectory_active' in launch_source
     assert 'condition=gravity_active' in launch_source
