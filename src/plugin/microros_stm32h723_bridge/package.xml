@@ -20,6 +20,9 @@
   <depend>rclcpp_action</depend>
   <depend>rclcpp_lifecycle</depend>
   <exec_depend>rclpy</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>unique_identifier_msgs</exec_depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>action_msgs</depend>
