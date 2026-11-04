@@ -76,6 +76,11 @@ try:
         assert not active & {'arm_teleop_controller', 'arm_trajectory_controller', 'vla_position_controller'}
         spin(2)
         wait(*helper('check'))
+        # At the mock's zero arm pose, the real Pinocchio model needs more
+        # than 5 Nm on joint3. Exercise gravity -> hardware -> serialized MCU
+        # command, catching accidental reuse of the position-mode 5 Nm cap.
+        assert frames, 'missing MCU command frames'
+        assert -10.0 < float(frames[-1].effort[2]) < -5.1, 'joint3 gravity feed-forward clipped'
         before = len(frames)
         wait(*helper('move', '--command-id', str(uuid.uuid4()), '--position', '0.014'))
         commands = frames[before:]
@@ -102,7 +107,7 @@ try:
         stopped = frames[before:]
         assert any(m.mode == 3 for m in stopped)
         assert all(m.mode != 2 for m in stopped)
-        print('PASS teaching: zero arm stiffness, independent calibrated gripper, scoped cancel, lock, controller exclusion, no RETURN')
+        print('PASS teaching: gravity feed-forward above 5 Nm, zero arm stiffness, independent calibrated gripper, scoped cancel, lock, controller exclusion, no RETURN')
 except BaseException:
     for log in logs:
         log.flush(); log.seek(0); print(log.read())

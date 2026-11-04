@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <limits>
+#include <yaml-cpp/yaml.h>
 #include "microros_stm32h723_bridge/micro_ros_system.hpp"
 
 namespace microros_stm32h723_bridge
@@ -44,6 +45,13 @@ struct MicroRosSystemTestAccess
     system.track_gains_.kp[6] = 100.0;
   }
   static void velocity(MicroRosSystem & system, double value) {system.command_velocity_.fill(value);}
+  static void installed_teaching_gains(MicroRosSystem & system)
+  {
+    ASSERT_TRUE(system.load_gains(TEACHING_GAINS_FILE));
+    const auto limits = YAML::LoadFile(TEACHING_GAINS_FILE)["effort_limits"];
+    ASSERT_EQ(limits.size(), 7U);
+    for (std::size_t i = 0; i < 7; ++i) {system.effort_limits_[i] = limits[i].as<double>();}
+  }
   static void effort(MicroRosSystem & system, double value) {system.command_effort_.fill(value);}
   static void legacy(MicroRosSystem & system) {system.velocity_available_.fill(false);}
   static void hold(MicroRosSystem & system)
@@ -337,6 +345,46 @@ TEST(DragTeaching, RejectsArmClaimsButAllowsIndependentGripper)
   MicroRosSystemTestAccess::returning(system);
   MicroRosSystemTestAccess::write(system);
   MicroRosSystemTestAccess::assert_disabled(system);
+}
+
+TEST(DragTeaching, PreservesMeasuredGravityDemandAndKeepsIndependentEffortCaps)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::teaching(system);
+  MicroRosSystemTestAccess::installed_teaching_gains(system);
+  auto node = MicroRosSystemTestAccess::node(system);
+  std::vector<msg::JointCommand> messages;
+  auto sub = node->create_subscription<msg::JointCommand>(
+    "/robot_console_tests/stop_commands", rclcpp::QoS(100).best_effort(),
+    [&messages](const msg::JointCommand::SharedPtr value) {messages.push_back(*value);});
+  const auto discovery = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  while (sub->get_publisher_count() == 0 && std::chrono::steady_clock::now() < discovery) {
+    rclcpp::spin_some(node); std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  // Joint3 needed -7.7179 Nm at the observed sag pose. Check both signs and
+  // demand above the retained caps through the actual serialized write path.
+  for (const double demand : {-7.7179, 7.7179, -20.0, 20.0}) {
+    MicroRosSystemTestAccess::effort(system, demand);
+    MicroRosSystemTestAccess::write(system);
+    const auto sequence = MicroRosSystemTestAccess::sequence(system);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+    while ((messages.empty() || messages.back().sequence != sequence) &&
+      std::chrono::steady_clock::now() < deadline)
+    {
+      rclcpp::spin_some(node); std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    ASSERT_FALSE(messages.empty());
+    ASSERT_EQ(messages.back().sequence, sequence);
+    const auto & frame = messages.back();
+    ASSERT_EQ(frame.mode, msg::JointCommand::MODE_TRACK);
+    for (std::size_t i = 0; i < 6; ++i) {
+      EXPECT_NEAR(frame.effort[i], std::clamp(demand, -10.0, 10.0), 1e-5);
+      EXPECT_FLOAT_EQ(frame.kp[i], 0.0F);
+      EXPECT_FLOAT_EQ(frame.kd[i], 1.0F);
+    }
+    EXPECT_NEAR(frame.effort[6], std::clamp(demand, -2.0, 2.0), 1e-5);
+  }
 }
 
 }  // namespace microros_stm32h723_bridge

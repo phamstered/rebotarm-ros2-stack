@@ -12,4 +12,6 @@ track:
 idle:
   kp: [0, 0, 0, 0, 0, 0, 0]
   kd: [1, 1, 1, 1, 1, 1, 1]
-effort_limits: [5, 5, 5, 3, 3, 3, 2]
+# Arm feed-forward must retain gravity_mit_gains limits: unlike position modes,
+# Kp=0 cannot supply torque lost to clipping. Gripper keeps its own 2 Nm limit.
+effort_limits: [10, 10, 10, 10, 10, 10, 2]
