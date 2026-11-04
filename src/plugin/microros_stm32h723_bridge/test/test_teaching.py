@@ -31,7 +31,9 @@ def test_mixed_gains_leave_arm_compliant_and_do_not_home_or_close_on_stop():
     for mode in ('hold', 'track'):
         for field in ('kp', 'kd'):
             assert gains[mode][field][6] == normal[mode][field][6]
-    assert gains['effort_limits'] == normal['effort_limits']
+    gravity = yaml.safe_load((ROOT / 'config/gravity_mit_gains.yaml').read_text())
+    assert gains['effort_limits'][:6] == gravity['effort_limits'][:6]
+    assert gains['effort_limits'][6] == normal['effort_limits'][6]
 
 
 @pytest.mark.parametrize('value', [-0.001, 0.051, float('nan'), float('inf')])
