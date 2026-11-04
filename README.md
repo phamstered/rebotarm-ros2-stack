@@ -168,5 +168,5 @@ ROBOT_MODEL_LIMITS_PROBE="$PWD/build/rebotarm_moveit_config/test_robot_model_lim
 运行前须确认导出文件根节点名称与探针节点 `move_group` 一致。
 
 
-拖动示教（六轴重力补偿 + 独立夹爪）使用 `scripts/start_arm_teleop.sh --mode=teaching`。
-需先现场支撑并安全退出旧模式；退出示教不会主动回零。参见 [控制器说明](docs/controllers.md#拖动示教与独立夹爪)。
+拖动示教（六轴重力补偿 + 手动夹爪）使用 `scripts/start_arm_teleop.sh --mode=teaching`。
+需先现场支撑并安全退出旧模式；退出示教不会主动回零。参见 [控制器说明](docs/controllers.md#拖动示教与手动夹爪)。

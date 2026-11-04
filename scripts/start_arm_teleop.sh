@@ -203,7 +203,8 @@ if [[ "$POSITION_CONTROLLER" == "teaching" ]]; then
     GAINS_FILE="$WORKSPACE_DIR/install/microros_stm32h723_bridge/share/microros_stm32h723_bridge/config/teaching_mit_gains.yaml"
 fi
 GRIPPER_CONTROLLER="gripper_teleop_controller"
-if [[ "$POSITION_CONTROLLER" == "trajectory" || "$POSITION_CONTROLLER" == "teaching" ]]; then
+[[ "$POSITION_CONTROLLER" == "teaching" ]] && GRIPPER_CONTROLLER="none"
+if [[ "$POSITION_CONTROLLER" == "trajectory" ]]; then
     GRIPPER_CONTROLLER="gripper_trajectory_controller"
 fi
 SELECTED_EFFORT_CONTROLLER=""
@@ -340,7 +341,7 @@ controller_has_state() {
 
 gripper_controller_matches() {
     local controller_output="$1"
-    if [[ "$ENABLE_GRIPPER" == "true" ]]; then
+    if [[ "$ENABLE_GRIPPER" == "true" && "$GRIPPER_CONTROLLER" != "none" ]]; then
         local other="gripper_trajectory_controller"
         [[ "$GRIPPER_CONTROLLER" == "gripper_trajectory_controller" ]] && other="gripper_teleop_controller"
         controller_has_state "$GRIPPER_CONTROLLER" active "$controller_output" &&
@@ -726,7 +727,7 @@ if [[ "$ENABLE_JOINT4_CALIBRATION" == "true" ]]; then
     CALIBRATION_STATE="active"
     ACTIVE_COMMAND_CONTROLLERS+=(joint4_calibration_controller)
 fi
-if [[ "$ENABLE_GRIPPER" == "true" ]]; then
+if [[ "$ENABLE_GRIPPER" == "true" && "$GRIPPER_CONTROLLER" != "none" ]]; then
     ACTIVE_COMMAND_CONTROLLERS+=("$GRIPPER_CONTROLLER")
 fi
 controller_deadline=$((SECONDS + CONTROLLER_START_TIMEOUT))
@@ -817,13 +818,17 @@ for joint_index in {1..6}; do
         interfaces_valid="false"
     fi
 done
-if [[ "$ENABLE_GRIPPER" == "true" ]] && \
+if [[ "$ENABLE_GRIPPER" == "true" && "$GRIPPER_CONTROLLER" != "none" ]] && \
     ! grep -Eq "gripper_finger_left_joint/position \[available\] \[claimed\]" \
         <<<"$hardware_interfaces"; then
     interfaces_valid="false"
 fi
 if [[ "$ENABLE_GRIPPER" == "true" && "$GRIPPER_CONTROLLER" == "gripper_trajectory_controller" ]] && \
     ! grep -Eq "gripper_finger_left_joint/velocity \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
+    interfaces_valid="false"
+fi
+if [[ "$POSITION_CONTROLLER" == "teaching" ]] &&
+    grep -Eq "gripper_finger_left_joint/(position|velocity|effort) \[available\] \[claimed\]" <<<"$hardware_interfaces"; then
     interfaces_valid="false"
 fi
 if ! grep -Eq 'label=active' <<<"$hardware_components" || [[ "$interfaces_valid" != "true" ]]; then
