@@ -1,0 +1,20 @@
+name: Docker runtime
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Humble runtime
+        run: ./scripts/docker-runtime.sh build
+      - name: Test runtime with isolated mock MCU
+        run: ROS_DOMAIN_ID=221 ./scripts/docker-runtime.sh run bash /opt/rebotarm/scripts/verify-runtime.sh
