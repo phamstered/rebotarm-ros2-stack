@@ -170,3 +170,7 @@ ROBOT_MODEL_LIMITS_PROBE="$PWD/build/rebotarm_moveit_config/test_robot_model_lim
 
 拖动示教（六轴重力补偿 + 独立夹爪）使用 `scripts/start_arm_teleop.sh --mode=teaching`。
 需先现场支撑并安全退出旧模式；退出示教不会主动回零。参见 [控制器说明](docs/controllers.md#拖动示教与独立夹爪)。
+
+## Jetson Docker runtime
+
+ROS 2 Humble 的独立容器构建、启动与 host/Docker 双路径验证入口见 [Docker 运行说明](docs/docker.md)。

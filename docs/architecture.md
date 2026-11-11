@@ -109,3 +109,7 @@ ros2_control 控制器层（controller_manager）
 拖动示教是独立控制配置：`position_controller=teaching`，六轴只接受重力 effort，
 夹爪拥有独立 position+velocity JTC。硬件专用标记校验柔顺增益并拒绝六轴位置接口。
 桌面 SSH 调用固定夹爪适配器，通过有界、可取消的 ROS Action 控制夹爪；不发布 MIT 帧。
+
+## Docker runtime
+
+Humble 容器使用 host 网络及独立 PID 命名空间，构建目录与 host 分离。部署与权限边界见 [Docker 运行说明](docker.md)。
