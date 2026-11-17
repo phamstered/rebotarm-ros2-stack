@@ -49,6 +49,10 @@ public:
     observed_ = true;
     const bool reboot = next.boot_id != 0 && snapshot_.boot_id != 0 &&
       next.boot_id != snapshot_.boot_id;
+    if (identity_exhausted_) {return false;}
+    for (std::size_t index = 0; index < retired_count_; ++index) {
+      if (next.boot_id == retired_boots_[index]) {return false;}
+    }
     if (next.protocol_version != 2 || next.boot_id == 0 || next.source_stamp == 0 ||
       next.control_epoch == 0 || next.operation_state > 4)
     {
@@ -65,6 +69,14 @@ public:
     {
       valid_ = false;
       return false;  // Keep the epoch high-water mark after a rollback.
+    }
+    if (reboot) {
+      if (retired_count_ == retired_boots_.size()) {
+        valid_ = false;
+        identity_exhausted_ = true;
+        return true;  // Reconstruct the hardware instance before another boot.
+      }
+      retired_boots_[retired_count_++] = snapshot_.boot_id;
     }
     valid_ = true;
     snapshot_ = next;
@@ -110,6 +122,9 @@ private:
   Clock::time_point received_at_{};
   bool observed_{false};
   bool valid_{false};
+  std::array<uint64_t, 16> retired_boots_{};
+  std::size_t retired_count_{0};
+  bool identity_exhausted_{false};
 };
 
 }  // namespace microros_stm32h723_bridge

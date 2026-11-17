@@ -70,6 +70,31 @@ int main()
   status.last_command_sequence = 9;
   stop.observe(status, now);
   assert(!stop.confirms_disable(10, 12, now, 1s));
+
+  MotorModeGate retired;
+  status.control_modes.fill(1);
+  retired.observe(status, now);
+  changed = status; changed.boot_id++; changed.source_stamp = 1;
+  changed.control_modes[0] = 2;
+  retired.observe(changed, now);
+  status.source_stamp++;
+  assert(!retired.observe(status, now + 500ms));
+  assert(!retired.allows_mit(0x7f, true, now + 500ms, 1s));
+
+  MotorModeGate many_boots;
+  status.control_modes.fill(1); status.boot_id = 100; status.source_stamp = 1;
+  many_boots.observe(status, now);
+  for (unsigned index = 1; index <= 16; ++index) {
+    status.boot_id++;
+    assert(many_boots.observe(status, now));
+    assert(many_boots.allows_mit(0x7f, true, now, 1s));
+  }
+  status.boot_id++;
+  assert(many_boots.observe(status, now));
+  assert(!many_boots.allows_mit(0x7f, true, now, 1s));
+  status.boot_id--; status.source_stamp++;
+  assert(!many_boots.observe(status, now));
+  assert(!many_boots.allows_mit(0x7f, true, now, 1s));
   status.last_command_sequence = 11; status.source_stamp++;
   stop.observe(status, now);
   assert(!stop.confirms_disable(10, 12, now, 1s));

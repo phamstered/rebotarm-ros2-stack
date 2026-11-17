@@ -246,7 +246,17 @@ def test_hold_latches_measured_position_and_watchdog_revokes_lease():
 def test_idle_lease_expires_without_enabling_outputs():
     model = acquired()
     model.tick(0.171)
+    assert model.lease_id != 0 and model.enabled_joint_mask == 0 and model.mode == 3
+    model.tick(0.571)
     assert model.lease_id == 0 and model.enabled_joint_mask == 0 and model.mode == 3
+
+
+def test_first_accepted_frame_replaces_startup_grace_with_command_timeout():
+    model = acquired()
+    model.tick(0.29)
+    assert model.command_v2(command(model), 0.3) == 0
+    model.tick(0.401)
+    assert model.lease_id == 0 and model.mode == 0
 
 
 def test_hold_stream_timeout_also_revokes_lease_without_reusing_old_goal():

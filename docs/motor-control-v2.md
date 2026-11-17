@@ -40,6 +40,8 @@ MODE、LEASE、SEQUENCE、NONFINITE、LIMITS、FAULT、READBACK、TIMEOUT。拒�
 `rejected_sequence/reject_code` 与锁存 `fault_code` 分开，不把丢包或错模式当作已成功执行。
 DISABLE 撤销 lease，故障 11 下仍可请求关闭输出，但不能清除锁存故障。500 ms watchdog
 不能解释为一定关闭输出；停止结果仍以反馈为准。
+ACQUIRE 后仍处于 DISABLE、且尚未收到第一帧合法 V2 时，lease 有 500 ms 握手窗口；
+第一帧受理后使用 100 ms 指令超时（HOLD 也需要持续刷新）。空闲 lease 到期不会使能输出。
 
 ## MIT 生命周期准入
 
@@ -47,6 +49,8 @@ DISABLE 撤销 lease，故障 11 下仍可请求关闭输出，但不能清除�
 
 - 已发现 V2 状态发布者或收到过 V2 状态后，本实例永久要求新鲜的 V2 状态，不因发布者消失而回退。
 - 状态必须有协议 2、非零 boot ID、递增的源时间、未回退的配置代次；所有必需轴均已验证为 MIT。
+- 已退休 boot 的迟到反馈不能重新打开门禁。单个 hardware 实例最多记忆 16 次启动变更，
+  超出后保持门禁关闭，须重新构建该实例；不会为释放有界历史而重新接受旧 boot。
 - 不允许切换中、未完成配置、故障、配置错误、V2 source 归属或 lease 尚未释放。
 - 写入过程中准入失效或 MCU 重启会锁存 DISABLE，不经过 RETURN，也不在状态恢复后自动继续旧目标。
   下一次合法 hardware 生命周期才能重新激活。停止帧清零所有控制字段，并重新分配 sequence；

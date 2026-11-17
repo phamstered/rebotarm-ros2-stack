@@ -289,7 +289,7 @@ class MotorControlSim:
                 self.mode = 0
                 self.target = self.position.copy()
                 self.lease_id = 0
-        elif self.lease_id and self._lease_at is not None and now - self._lease_at > 0.1:
+        elif self.lease_id and self._lease_at is not None and now - self._lease_at > 0.5:
             self.lease_id = 0
         dt = 0.0 if self._last_tick is None else max(0.0, now - self._last_tick)
         if self.mode != 3:
