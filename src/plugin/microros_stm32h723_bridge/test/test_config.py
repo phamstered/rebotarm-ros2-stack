@@ -427,6 +427,17 @@ def test_hardware_description_has_no_integral_compensation_parameter():
     assert 'trajectory_integral' not in source
 
 
+def test_both_hardware_profiles_can_require_confirmed_motor_modes():
+    import xacro
+    for name in ('rebotarm.arm.micro_ros.xacro', 'rebotarm.micro_ros.xacro'):
+        path = PACKAGE_ROOT / 'urdf' / name
+        for required in ('true', 'false'):
+            robot = ET.fromstring(xacro.process_file(
+                str(path), mappings={'require_motor_control_status': required}).toxml())
+            parameter = robot.find('.//hardware/param[@name="require_motor_control_status"]')
+            assert parameter is not None and parameter.text == required
+
+
 def test_real_jtc_state_publication_targets_match_the_100_hz_control_loop():
     workspace = PACKAGE_ROOT.parents[2]
     profiles = [

@@ -97,6 +97,10 @@ STM32H723 固件（rebotarm-executor）
 
 包内说明：`src/plugin/microros_stm32h723_bridge/README.md`。
 
+POS_VEL 使用独立 [Motor Control V2](./motor-control-v2) 消息与配置事务。
+旧控制器保持 MIT；发现 V2 固件后，启动与写入均要求实际 MIT 读回且 V2 owner/lease 已释放。
+运行中门禁失效会锁存 DISABLE，状态恢复不会自动重发旧目标。
+
 ## MoveIt 如何接到后端
 
 `rebotarm_moveit_config` 的 `moveit_controllers.yaml` 把规划结果交给 **`arm_trajectory_controller`** 的 `FollowJointTrajectory`。这与 Gazebo / MoveIt demo 里的 **`arm_controller`** 不是同一个名字。

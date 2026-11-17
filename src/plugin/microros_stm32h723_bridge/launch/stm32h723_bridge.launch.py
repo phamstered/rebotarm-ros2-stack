@@ -25,6 +25,7 @@ def generate_launch_description():
             FindExecutable(name='xacro'), ' ', xacro_file,
             ' gains_file:=', gains_file,
             ' required_joint_mask:=', required_joint_mask,
+            ' require_motor_control_status:=', LaunchConfiguration('require_motor_control_status'),
         ])
     }
 
@@ -35,6 +36,9 @@ def generate_launch_description():
         # development environments where the service is not running.
         DeclareLaunchArgument('start_agent', default_value='false'),
         DeclareLaunchArgument('required_joint_mask', default_value='0x7f'),
+        DeclareLaunchArgument(
+            'require_motor_control_status', default_value='false', choices=['true', 'false'],
+            description='Require fresh V2 MIT readback even before discovering a V2 endpoint.'),
         Node(
             package='micro_ros_agent',
             executable='micro_ros_agent',

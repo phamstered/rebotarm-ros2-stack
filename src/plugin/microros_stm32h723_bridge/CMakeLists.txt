@@ -41,6 +41,9 @@ find_package(yaml-cpp REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointCommand.msg"
   "msg/HardwareStatus.msg"
+  "msg/JointCommandV2.msg"
+  "msg/MotorControlStatus.msg"
+  "srv/MotorControl.srv"
   "msg/VlaJointChunk.msg"
   "action/GravityIdentification.action"
   DEPENDENCIES std_msgs action_msgs builtin_interfaces
@@ -136,19 +139,28 @@ install(TARGETS ${GRAVITY_IDENTIFICATION_NODE}
 install(PROGRAMS
   scripts/teaching_gripper.py
   scripts/mock_stm32_node.py
+  scripts/mock_motor_control_v2.py
   scripts/mock_vla_chunk_publisher.py
   scripts/single_motor_smoke_test.py
   scripts/stm32_state_republisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(FILES scripts/feedback_clock.py scripts/teaching_core.py DESTINATION lib/${PROJECT_NAME})
+install(FILES scripts/feedback_clock.py scripts/teaching_core.py scripts/motor_control_sim.py
+  DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
+  add_executable(test_motor_mode_gate test/test_motor_mode_gate.cpp)
+  target_include_directories(test_motor_mode_gate PRIVATE include)
+  target_compile_options(test_motor_mode_gate PRIVATE -UNDEBUG)
+  add_test(NAME motor_mode_gate COMMAND test_motor_mode_gate)
   find_package(ament_cmake_pytest REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_pytest_test(test_teaching test/test_teaching.py)
   ament_add_pytest_test(test_config test/test_config.py)
+  ament_add_pytest_test(test_motor_control_sim test/test_motor_control_sim.py)
+  ament_add_pytest_test(test_motor_control_v2_ros test/test_motor_control_v2_ros.py
+    ENV ROS_DOMAIN_ID=219 ROS_LOCALHOST_ONLY=1 TIMEOUT 40)
   ament_add_pytest_test(test_feedback_clock test/test_feedback_clock.py)
   ament_add_pytest_test(test_feedback_clock_ros test/test_feedback_clock_ros.py
     ENV ROS_DOMAIN_ID=218 ROS_LOCALHOST_ONLY=1 TIMEOUT 40)
