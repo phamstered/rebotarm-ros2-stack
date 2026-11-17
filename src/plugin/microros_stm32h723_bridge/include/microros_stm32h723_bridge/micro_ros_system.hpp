@@ -16,6 +16,8 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "microros_stm32h723_bridge/msg/hardware_status.hpp"
 #include "microros_stm32h723_bridge/msg/joint_command.hpp"
+#include "microros_stm32h723_bridge/msg/motor_control_status.hpp"
+#include "microros_stm32h723_bridge/motor_mode_gate.hpp"
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -71,6 +73,8 @@ private:
 
   void joint_state_callback(const sensor_msgs::msg::JointState::SharedPtr message);
   void status_callback(const msg::HardwareStatus::SharedPtr message);
+  void motor_control_callback(const msg::MotorControlStatus::SharedPtr message);
+  bool motor_control_ready();
   void request_safe_stop(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
     std::shared_ptr<std_srvs::srv::Trigger::Response> response);
@@ -112,11 +116,16 @@ private:
   Feedback feedback_;
   std::mutex status_mutex_;
   msg::HardwareStatus status_;
+  bool status_received_{false};  // Guarded by status_mutex_.
+  std::mutex motor_control_mutex_;
+  MotorModeGate motor_mode_gate_;
+  bool motor_boot_changed_{false};  // Guarded by motor_control_mutex_.
 
   std::shared_ptr<rclcpp::Node> node_;
   rclcpp::Publisher<msg::JointCommand>::SharedPtr command_publisher_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr state_subscription_;
   rclcpp::Subscription<msg::HardwareStatus>::SharedPtr status_subscription_;
+  rclcpp::Subscription<msg::MotorControlStatus>::SharedPtr motor_control_subscription_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr safe_stop_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disable_service_;
   std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
@@ -142,6 +151,9 @@ private:
   std::string command_topic_{"/stm32/joint_commands"};
   std::string state_topic_{"/stm32/joint_states"};
   std::string status_topic_{"/stm32/status"};
+  std::string motor_control_status_topic_{"/stm32/motor_control_status"};
+  bool require_motor_control_status_{false};
+  std::chrono::milliseconds motor_control_status_timeout_{1000};
 };
 
 }  // namespace microros_stm32h723_bridge

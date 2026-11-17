@@ -79,12 +79,16 @@ def generate_launch_description():
             FindExecutable(name='xacro'), ' ', xacro_file,
             ' gains_file:=', gains_file,
             ' enable_gripper:=', enable_gripper,
+            ' require_motor_control_status:=', LaunchConfiguration('require_motor_control_status'),
             ' drag_teaching:=', PythonExpression(["'true' if '", position_controller, "' == 'teaching' else 'false'"]),
         ])
     }
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument(
+            'require_motor_control_status', default_value='false', choices=['true', 'false'],
+            description='Require fresh V2 MIT readback even before discovering a V2 endpoint.'),
         DeclareLaunchArgument(
             'gains_file',
             default_value=default_gains_file,

@@ -2,6 +2,7 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rebotarm">
   <xacro:arg name="gains_file" default="$(find microros_stm32h723_bridge)/config/mit_gains.yaml"/>
   <xacro:arg name="required_joint_mask" default="0x7f"/>
+  <xacro:arg name="require_motor_control_status" default="false"/>
 
   <xacro:include filename="$(find rebotarm_gazebo)/urdf/rebotarm.urdf"/>
 
@@ -11,6 +12,7 @@
       <param name="command_topic">/stm32/joint_commands</param>
       <param name="state_topic">/stm32/joint_states</param>
       <param name="status_topic">/stm32/status</param>
+      <param name="require_motor_control_status">$(arg require_motor_control_status)</param>
       <param name="state_timeout_ms">100</param>
       <param name="activation_timeout_ms">3000</param>
       <param name="return_duration_ms">3000</param>

@@ -115,6 +115,21 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
     command_topic_ = parameter_or(info_, "command_topic", command_topic_);
     state_topic_ = parameter_or(info_, "state_topic", state_topic_);
     status_topic_ = parameter_or(info_, "status_topic", status_topic_);
+    const auto separator = command_topic_.find_last_of('/');
+    const auto parent = separator == std::string::npos ? std::string{} :
+      command_topic_.substr(0, separator);
+    motor_control_status_topic_ = parameter_or(
+      info_, "motor_control_status_topic", parent + "/motor_control_status");
+    const auto require_mode = parameter_or(info_, "require_motor_control_status", "false");
+    if (require_mode != "true" && require_mode != "false") {
+      throw std::runtime_error("require_motor_control_status must be true or false");
+    }
+    require_motor_control_status_ = require_mode == "true";
+    const double mode_timeout = parameter_or(info_, "motor_control_status_timeout_ms", 1000.0);
+    if (!std::isfinite(mode_timeout) || mode_timeout < 1 || mode_timeout > 1000) {
+      throw std::runtime_error("motor_control_status_timeout_ms must be within 1..1000");
+    }
+    motor_control_status_timeout_ = std::chrono::milliseconds(static_cast<int64_t>(mode_timeout));
     state_timeout_ = std::chrono::milliseconds(
       static_cast<int64_t>(parameter_or(info_, "state_timeout_ms", 100.0)));
     activation_timeout_ = std::chrono::milliseconds(
@@ -166,6 +181,9 @@ hardware_interface::CallbackReturn MicroRosSystem::on_init(
       state_topic_, qos, std::bind(&MicroRosSystem::joint_state_callback, this, std::placeholders::_1));
     status_subscription_ = node_->create_subscription<msg::HardwareStatus>(
       status_topic_, qos, std::bind(&MicroRosSystem::status_callback, this, std::placeholders::_1));
+    motor_control_subscription_ = node_->create_subscription<msg::MotorControlStatus>(
+      motor_control_status_topic_, qos,
+      std::bind(&MicroRosSystem::motor_control_callback, this, std::placeholders::_1));
     safe_stop_service_ = node_->create_service<std_srvs::srv::Trigger>(
       "~/safe_stop",
       std::bind(&MicroRosSystem::request_safe_stop, this, std::placeholders::_1, std::placeholders::_2));
@@ -224,6 +242,10 @@ hardware_interface::return_type MicroRosSystem::prepare_command_mode_switch(
   const std::vector<std::string> & start_interfaces,
   const std::vector<std::string> & stop_interfaces)
 {
+  if (!start_interfaces.empty() && !motor_control_ready()) {
+    RCLCPP_ERROR(node_->get_logger(), "Controller activation requires confirmed MIT and released V2 ownership");
+    return hardware_interface::return_type::ERROR;
+  }
   auto positions = position_claimed_mask_.load();
   auto velocities = velocity_claimed_mask_.load();
   for (std::size_t i = 0; i < joint_names_.size(); ++i) {
@@ -293,11 +315,11 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
   if (!feedback_cv_.wait_for(
       lock, activation_timeout_,
       [this]() {
-        return feedback_.valid && required_joints_active_.load() &&
+        return feedback_.valid && required_joints_active_.load() && motor_control_ready() &&
                std::chrono::steady_clock::now() - feedback_.received_at <= state_timeout_;
       }))
   {
-    RCLCPP_ERROR(node_->get_logger(), "Timed out waiting for complete state and required joint mask");
+    RCLCPP_ERROR(node_->get_logger(), "Timed out waiting for state, required joints, and confirmed MIT without V2 ownership");
     return hardware_interface::CallbackReturn::ERROR;
   }
   state_position_ = feedback_.position;
@@ -316,6 +338,11 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
     // as MOTOR_FAULT_STALE_SEQUENCE until the MCU is power-cycled.
     sequence_ = status_.last_command_sequence;
   }
+  {
+    std::lock_guard<std::mutex> mode_lock(motor_control_mutex_);
+    motor_mode_gate_.command_sequence(sequence_);
+    motor_boot_changed_ = false;
+  }
   safe_stop_requested_.store(false);
   disable_requested_.store(false);
   disable_sequence_ = 0;
@@ -328,8 +355,11 @@ hardware_interface::CallbackReturn MicroRosSystem::on_activate(const rclcpp_life
 hardware_interface::CallbackReturn MicroRosSystem::on_deactivate(const rclcpp_lifecycle::State &)
 {
   std::lock_guard<std::mutex> lock(status_mutex_);
+  std::lock_guard<std::mutex> mode_lock(motor_control_mutex_);
   if (disable_sequence_ == 0 || status_.mode != msg::HardwareStatus::MODE_DISABLE ||
     status_.fault_code != 0 ||
+    !motor_mode_gate_.confirms_disable(disable_sequence_, sequence_,
+      std::chrono::steady_clock::now(), motor_control_status_timeout_) ||
     static_cast<int32_t>(status_.last_command_sequence - disable_sequence_) < 0 ||
     static_cast<int32_t>(sequence_ - status_.last_command_sequence) < 0)
   {
@@ -367,8 +397,15 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
     return hardware_interface::return_type::OK;
   }
 
+  if (!motor_control_ready()) {
+    // A drive-mode change, lost status, or V2 owner terminates this MIT
+    // lifecycle. Never send RETURN gains into a POS_VEL drive or auto-resume.
+    disable_requested_.store(true);
+    RCLCPP_ERROR_THROTTLE(node_->get_logger(), *node_->get_clock(), 1000,
+      "MIT admission lost; requesting DISABLE until this lifecycle is rebuilt");
+  }
   auto targets = command_position_;
-  if (!all_finite(targets)) {
+  if (!disable_requested_.load() && disable_sequence_ == 0 && !all_finite(targets)) {
     RCLCPP_ERROR(node_->get_logger(), "Rejected non-finite position command");
     return hardware_interface::return_type::ERROR;
   }
@@ -416,6 +453,25 @@ hardware_interface::return_type MicroRosSystem::write(const rclcpp::Time &, cons
   msg::JointCommand message;
   message.header.stamp = node_->now();
   message.mode = command_mode_.load();
+  uint32_t accepted_sequence = 0;
+  bool has_v2_sequence = false;
+  bool rebooted = false;
+  {
+    std::lock_guard<std::mutex> mode_lock(motor_control_mutex_);
+    has_v2_sequence = motor_mode_gate_.command_sequence(accepted_sequence);
+    rebooted = motor_boot_changed_;
+    motor_boot_changed_ = false;
+  }
+  if (!has_v2_sequence) {
+    std::lock_guard<std::mutex> status_lock(status_mutex_);
+    accepted_sequence = status_received_ ? status_.last_command_sequence : sequence_;
+  }
+  if (rebooted || static_cast<int32_t>(accepted_sequence - sequence_) > 0) {
+    sequence_ = accepted_sequence;
+  }
+  if (rebooted) {
+    disable_sequence_ = 0;  // A previous boot cannot acknowledge this stop.
+  }
   message.sequence = ++sequence_;
   if (message.sequence == 0) {
     message.sequence = ++sequence_;
@@ -506,6 +562,50 @@ void MicroRosSystem::status_callback(const msg::HardwareStatus::SharedPtr messag
   }
   std::lock_guard<std::mutex> lock(status_mutex_);
   status_ = *message;
+  status_received_ = true;
+  feedback_cv_.notify_all();
+}
+
+bool MicroRosSystem::motor_control_ready()
+{
+  std::lock_guard<std::mutex> lock(motor_control_mutex_);
+  if (motor_control_subscription_ && motor_control_subscription_->get_publisher_count() > 0) {
+    motor_mode_gate_.discovered();
+  }
+  return motor_mode_gate_.allows_mit(
+    required_joint_mask_, require_motor_control_status_,
+    std::chrono::steady_clock::now(), motor_control_status_timeout_);
+}
+
+void MicroRosSystem::motor_control_callback(const msg::MotorControlStatus::SharedPtr message)
+{
+  MotorModeGate::Snapshot snapshot;
+  snapshot.protocol_version = message->protocol_version;
+  snapshot.boot_id = message->boot_id;
+  const auto & stamp = message->header.stamp;
+  if (stamp.sec >= 0 && stamp.nanosec < 1000000000U) {
+    snapshot.source_stamp = static_cast<uint64_t>(stamp.sec) * 1000000000ULL + stamp.nanosec;
+  }
+  snapshot.control_epoch = message->control_epoch;
+  snapshot.last_command_sequence = message->last_command_sequence;
+  snapshot.owner_source_id = message->owner_source_id;
+  snapshot.lease_id = message->lease_id;
+  snapshot.verified_joint_mask = message->verified_joint_mask;
+  snapshot.enabled_joint_mask = message->enabled_joint_mask;
+  snapshot.disabled_verified = message->disabled_verified;
+  snapshot.control_modes = message->control_modes;
+  snapshot.switching = message->switching;
+  snapshot.operation_state = message->operation_state;
+  snapshot.mode = message->mode;
+  snapshot.fault_code = message->fault_code;
+  snapshot.error_code = message->error_code;
+  {
+    std::lock_guard<std::mutex> lock(motor_control_mutex_);
+    if (motor_mode_gate_.observe(snapshot, std::chrono::steady_clock::now())) {
+      motor_boot_changed_ = true;
+      if (active_.load()) {disable_requested_.store(true);}
+    }
+  }
   feedback_cv_.notify_all();
 }
 
