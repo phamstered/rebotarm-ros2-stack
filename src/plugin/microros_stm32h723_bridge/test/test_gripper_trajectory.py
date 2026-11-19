@@ -43,7 +43,7 @@ def test_joint_goal_groups_keep_gripper_out_of_six_axis_ik():
     ('trajectory', 'true', 'false', ['gripper_trajectory_controller']),
     ('trajectory', 'false', 'false', []),
     ('none', 'true', 'false', []),
-    ('teaching', 'true', 'false', ['gripper_trajectory_controller']),
+    ('teaching', 'true', 'false', []),
     ('teaching', 'true', 'true', []),
     ('trajectory', 'true', 'true', []),
 ])
@@ -87,6 +87,9 @@ def test_launch_never_activates_two_gripper_owners(mode, enabled, state_only, ex
     ('gripper_teleop_controller', 'true', 'gripper_teleop_controller x active', True),
     ('gripper_teleop_controller', 'false', 'gripper_trajectory_controller x active', False),
     ('gripper_teleop_controller', 'false', 'gripper_trajectory_controller x inactive', True),
+    ('none', 'true', 'gripper_trajectory_controller x inactive', True),
+    ('none', 'true', 'gripper_trajectory_controller x active', False),
+    ('none', 'true', 'gripper_teleop_controller x active', False),
 ])
 def test_startup_reuse_rejects_wrong_or_multiple_gripper_owners(selected, enabled, controllers, accepted):
     import os

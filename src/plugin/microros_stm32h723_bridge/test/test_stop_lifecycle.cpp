@@ -42,7 +42,7 @@ struct MicroRosSystemTestAccess
     system.velocity_available_[6] = true;
     system.return_gains_.kp.fill(0.0);
     system.track_gains_.kp.fill(0.0);
-    system.track_gains_.kp[6] = 100.0;
+    system.track_gains_.kd[6] = 0.0;
   }
   static void velocity(MicroRosSystem & system, double value) {system.command_velocity_.fill(value);}
   static void installed_teaching_gains(MicroRosSystem & system)
@@ -416,20 +416,40 @@ TEST(TrajectoryEffort, ForwardsControllerEffortWithoutAccumulationAndDisableZero
 }
 
 
-TEST(DragTeaching, RejectsArmClaimsButAllowsIndependentGripper)
+TEST(DragTeaching, RejectsArmAndGripperClaimsButKeepsGravityEffort)
 {
   MicroRosSystem system;
   MicroRosSystemTestAccess::prepare(system);
   MicroRosSystemTestAccess::teaching(system);
+  MicroRosSystemTestAccess::drive_status(system, 1);
   EXPECT_EQ(system.prepare_command_mode_switch({"joint1/position"}, {}), hardware_interface::return_type::ERROR);
   EXPECT_EQ(system.prepare_command_mode_switch({"joint2/position", "joint2/velocity"}, {}), hardware_interface::return_type::ERROR);
-  EXPECT_EQ(system.perform_command_mode_switch({"gripper_finger_left_joint/position", "gripper_finger_left_joint/velocity"}, {}), hardware_interface::return_type::OK);
+  EXPECT_EQ(system.perform_command_mode_switch({"gripper_finger_left_joint/position", "gripper_finger_left_joint/velocity"}, {}), hardware_interface::return_type::ERROR);
+  EXPECT_EQ(system.prepare_command_mode_switch({"gripper_finger_left_joint/effort"}, {}), hardware_interface::return_type::ERROR);
+  EXPECT_EQ(system.perform_command_mode_switch({"joint1/effort", "joint2/effort", "joint3/effort"}, {}), hardware_interface::return_type::OK);
   MicroRosSystemTestAccess::returning(system);
   MicroRosSystemTestAccess::write(system);
   MicroRosSystemTestAccess::assert_disabled(system);
 }
 
-TEST(DragTeaching, PreservesMeasuredGravityDemandAndKeepsIndependentEffortCaps)
+TEST(DragTeaching, RejectsGravityClaimsDuringPosVelOrV2OwnershipAndCannotResumeAfterStop)
+{
+  for (const bool owned_mit : {false, true}) {
+    MicroRosSystem system;
+    MicroRosSystemTestAccess::prepare(system);
+    MicroRosSystemTestAccess::teaching(system);
+    MicroRosSystemTestAccess::drive_status(system, owned_mit ? 1 : 2, owned_mit ? 42 : 0);
+    EXPECT_EQ(system.prepare_command_mode_switch({"joint1/effort"}, {}),
+      hardware_interface::return_type::ERROR);
+    MicroRosSystemTestAccess::write(system);
+    MicroRosSystemTestAccess::assert_disabled(system);
+    MicroRosSystemTestAccess::drive_status(system, 1);
+    MicroRosSystemTestAccess::write(system);
+    MicroRosSystemTestAccess::assert_disabled(system);
+  }
+}
+
+TEST(DragTeaching, PreservesMeasuredGravityDemandAndZerosGripperOutput)
 {
   MicroRosSystem system;
   MicroRosSystemTestAccess::prepare(system);
@@ -447,6 +467,7 @@ TEST(DragTeaching, PreservesMeasuredGravityDemandAndKeepsIndependentEffortCaps)
   // Joint3 needed -7.7179 Nm at the observed sag pose. Check both signs and
   // demand above the retained caps through the actual serialized write path.
   for (const double demand : {-7.7179, 7.7179, -20.0, 20.0}) {
+    MicroRosSystemTestAccess::drive_status(system, 1);
     MicroRosSystemTestAccess::effort(system, demand);
     MicroRosSystemTestAccess::write(system);
     const auto sequence = MicroRosSystemTestAccess::sequence(system);
@@ -465,7 +486,11 @@ TEST(DragTeaching, PreservesMeasuredGravityDemandAndKeepsIndependentEffortCaps)
       EXPECT_FLOAT_EQ(frame.kp[i], 0.0F);
       EXPECT_FLOAT_EQ(frame.kd[i], 1.0F);
     }
-    EXPECT_NEAR(frame.effort[6], std::clamp(demand, -2.0, 2.0), 1e-5);
+    EXPECT_FLOAT_EQ(frame.effort[6], 0.0F);
+    EXPECT_FLOAT_EQ(frame.kp[6], 0.0F);
+    EXPECT_FLOAT_EQ(frame.kd[6], 0.0F);
+    EXPECT_FLOAT_EQ(frame.position[6], 0.0F);
+    EXPECT_FLOAT_EQ(frame.velocity[6], 0.0F);
   }
 }
 

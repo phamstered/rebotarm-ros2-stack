@@ -18,51 +18,48 @@ def test_ros_entrypoint_is_executable_for_symlink_install():
     assert os.access(entrypoint, os.X_OK)
     result = subprocess.run([str(entrypoint), '--help'], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert '{move,cancel,check}' in result.stdout
+    assert '{move,cancel,check,check-manual}' in result.stdout
 
 
-def test_mixed_gains_leave_arm_compliant_and_do_not_home_or_close_on_stop():
+def test_manual_gains_leave_arm_compliant_and_gripper_unpowered_in_every_mode():
     gains = yaml.safe_load((ROOT / 'config/teaching_mit_gains.yaml').read_text())
     for mode in ('return', 'hold', 'track', 'idle'):
         assert gains[mode]['kp'][:6] == [0] * 6
         assert all(v > 0 for v in gains[mode]['kd'][:6])
     assert gains['return']['kp'] == [0] * 7
-    normal = yaml.safe_load((ROOT / 'config/arm_gripper_mit_gains.yaml').read_text())
-    for mode in ('hold', 'track'):
-        for field in ('kp', 'kd'):
-            assert gains[mode][field][6] == normal[mode][field][6]
+    for mode in ('return', 'hold', 'track', 'idle'):
+        assert gains[mode]['kp'][6] == 0
+        assert gains[mode]['kd'][6] == 0
     gravity = yaml.safe_load((ROOT / 'config/gravity_mit_gains.yaml').read_text())
     assert gains['effort_limits'][:6] == gravity['effort_limits'][:6]
-    assert gains['effort_limits'][6] == normal['effort_limits'][6]
+    assert gains['effort_limits'][6] == 0
 
 
-@pytest.mark.parametrize('value', [-0.001, 0.051, float('nan'), float('inf')])
-def test_invalid_target_rejected(value):
-    with pytest.raises(ValueError):
-        core.target_position(value)
-
-
-def test_trajectory_bound_for_full_calibrated_travel():
-    assert core.target_position(0) == 0
-    assert core.target_position(0.05) == 0.05
-    assert 1.5 * .05 / core.DURATION <= .02
-    assert 6 * .05 / core.DURATION**2 <= .04
+@pytest.mark.parametrize('operation', ['move', 'cancel'])
+def test_legacy_electric_requests_fail_before_ros_initialization(operation):
+    result = subprocess.run([str(ROOT / 'scripts/teaching_gripper.py'), operation,
+                             '--command-id', '12345678-1234-1234-1234-123456789abc',
+                             '--position', '0.02'], capture_output=True, text=True)
+    assert result.returncode != 0
+    assert '手动示教不支持电动夹爪操作' in result.stderr
+    assert 'ModuleNotFoundError' not in result.stderr
 
 
 def controller(name, claims=(), state='active'):
     return SimpleNamespace(name=name, claimed_interfaces=list(claims), state=state)
 
 
-def test_gripper_requires_gravity_and_no_arm_owners():
-    ready = [controller('gravity_compensation_controller'), controller('gripper_trajectory_controller',
-             [core.JOINT + '/position', core.JOINT + '/velocity'])]
+def test_manual_gripper_requires_gravity_and_no_motion_or_gripper_effort_owners():
+    ready = [controller('gravity_compensation_controller')]
     assert core.controller_error(ready) is None
-    assert core.controller_error(ready[1:])
+    assert core.controller_error([])
     for name in ('arm_trajectory_controller', 'arm_teleop_controller', 'vla_position_controller',
-                 'joint4_calibration_controller', 'gripper_teleop_controller'):
+                 'joint4_calibration_controller', 'gripper_teleop_controller', 'gripper_trajectory_controller'):
         assert core.controller_error(ready + [controller(name)])
-    assert core.controller_error(ready + [controller('unknown', ['joint2/position'])])
-    assert core.controller_error([ready[0], controller('gripper_trajectory_controller', [core.JOINT + '/position'])])
+    for claim in ('joint2/position', 'joint4/velocity', core.JOINT + '/position',
+                  core.JOINT + '/velocity', core.JOINT + '/effort'):
+        assert core.controller_error(ready + [controller('unknown', [claim])])
+    assert core.controller_error(ready + [controller('gripper_trajectory_controller', state='inactive')]) is None
 
 
 def test_freshness_checks_source_clock_and_receipt_age():
@@ -72,13 +69,13 @@ def test_freshness_checks_source_clock_and_receipt_age():
     assert not core.fresh(10, 11_000_000_000, 10.1, 10_100_000_000)
 
 
-def test_teaching_preset_selects_mixed_gains_and_rejects_incompatible_overrides():
+def test_teaching_preset_selects_manual_gains_and_rejects_incompatible_overrides():
     script = (ROOT.parents[2] / 'scripts/start_arm_teleop.sh').read_text()
     prefix = script.split('SELECTED_EFFORT_CONTROLLER=""')[0]
     command = prefix + '\nprintf "%s|%s|%s|%s" "$POSITION_CONTROLLER" "$ENABLE_GRAVITY_CONTROLLER" "$GRIPPER_CONTROLLER" "$GAINS_FILE"\n'
     result = subprocess.run(['bash', '-c', command, 'test', '--mode=teaching'], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert 'teaching|true|gripper_trajectory_controller|' in result.stdout
+    assert 'teaching|true|none|' in result.stdout
     assert result.stdout.endswith('/config/teaching_mit_gains.yaml')
     for override in ('--gravity=false', '--gripper=false', '--joint4-calibration=true'):
         result = subprocess.run(['bash', '-c', command, 'test', '--mode=teaching', override], capture_output=True, text=True)
