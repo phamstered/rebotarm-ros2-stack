@@ -58,7 +58,22 @@ def test_real_rsp_recovers_large_source_rollback_and_tf_rate_is_bounded():
         # Deliberately seed RSP's prior-epoch throttle as would happen before upgrade.
         pump(.3, future=15, direct=True)
         assert received
+        # Clearing the Python list cannot drain TF still queued by DDS/RSP.
+        # Require corrected TF within the original one-second recovery budget;
+        # then measure a full clean window without accepting any future samples.
+        recovery_start = node.get_clock().now().nanoseconds
+        deadline = time.monotonic() + 1.
+        recovered = False
+        while time.monotonic() < deadline and not recovered:
+            pump(.05)
+            now = node.get_clock().now().nanoseconds
+            recovered = any(
+                t.child_frame_id == 'link1' and
+                recovery_start <= t.header.stamp.sec*1000000000+t.header.stamp.nanosec <= now
+                for t in received)
+        assert recovered, "RSP did not recover corrected TF within one second"
         received.clear()
+        normalized.clear()
         start = node.get_clock().now().nanoseconds
         pump(1.)
         stamps = [t.header.stamp.sec*1000000000+t.header.stamp.nanosec for t in received if t.child_frame_id=='link1']

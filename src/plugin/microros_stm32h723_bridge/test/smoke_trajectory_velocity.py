@@ -71,12 +71,21 @@ try:
             control_args.append('gains_file:=' + str(Path(get_package_share_directory('microros_stm32h723_bridge')) / 'config/arm_gripper_mit_gains.yaml'))
         launch(control_args, 'control.log')
         end = time.monotonic()+35
+        states = {}
+        ready = False
         while time.monotonic() < end:
             response = request('/controller_manager/list_controllers', ListControllers, ListControllers.Request())
             states = {c.name: c for c in response.controller}
-            if states.get('arm_trajectory_controller') and states['arm_trajectory_controller'].state == 'active' and states.get('arm_teleop_controller'):
+            gripper_ready = not gripper_enabled or (
+                states.get('gripper_trajectory_controller') and
+                states['gripper_trajectory_controller'].state == 'active')
+            ready = (states.get('arm_trajectory_controller') and
+                     states['arm_trajectory_controller'].state == 'active' and
+                     states.get('arm_teleop_controller') and gripper_ready)
+            if ready:
                 break
             spin(.2)
+        assert ready, f'Controllers not ready before deadline: { {name: c.state for name, c in states.items()} }'
         assert states['arm_trajectory_controller'].state == 'active'
         expected = {f'joint{i}/{interface}' for i in range(1,7) for interface in ('position','velocity')}
         assert expected.issubset(set(states['arm_trajectory_controller'].claimed_interfaces))

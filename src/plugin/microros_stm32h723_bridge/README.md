@@ -10,6 +10,14 @@ state solely as the Pinocchio configuration input and never writes position
 commands. `MicroRosSystem` does not calculate gravity; it combines the position
 and effort interface values into the outgoing MIT command.
 
+The package also generates independent `JointCommandV2`, `MotorControlStatus`,
+and `MotorControl` interfaces for manual POS_VEL tasks. The hardware plugin stays
+MIT-only and, once V2 is observed, requires fresh confirmed MIT modes and released
+V2 ownership before activating or writing motion. Loss of that admission latches
+DISABLE. See [the V2 contract and isolated MCU simulator](../../../docs/motor-control-v2.md)
+for compatibility settings, service transactions, and test commands. Simulated
+capabilities are not physical motor qualification.
+
 For supported-arm tuning without a position controller, run:
 
 ```bash

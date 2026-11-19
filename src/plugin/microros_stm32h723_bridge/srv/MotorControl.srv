@@ -1,0 +1,22 @@
+# One bounded MCU service. CONFIGURE is asynchronous; response is admission only.
+uint8 CONFIGURE=1
+uint8 ACQUIRE=2
+uint8 RELEASE=3
+uint8 CANCEL=4
+uint8 action
+uint32 operation_id
+uint64 boot_id
+uint32 expected_control_epoch
+uint64 source_id
+uint32 active_joint_mask
+uint8 control_mode
+uint32 lease_id
+# Match the latest accepted V1 DISABLE before configuration/lease changes.
+uint32 disable_sequence
+---
+bool accepted
+# MotorControlStatus.ERROR_* constants define error_code.
+uint16 error_code
+uint32 control_epoch
+uint32 lease_id
+uint32 operation_id

@@ -97,6 +97,10 @@ STM32H723 固件（rebotarm-executor）
 
 包内说明：`src/plugin/microros_stm32h723_bridge/README.md`。
 
+POS_VEL 使用独立 [Motor Control V2](./motor-control-v2) 消息与配置事务。
+旧控制器保持 MIT；发现 V2 固件后，启动与写入均要求实际 MIT 读回且 V2 owner/lease 已释放。
+运行中门禁失效会锁存 DISABLE，状态恢复不会自动重发旧目标。
+
 ## MoveIt 如何接到后端
 
 `rebotarm_moveit_config` 的 `moveit_controllers.yaml` 把规划结果交给 **`arm_trajectory_controller`** 的 `FollowJointTrajectory`。这与 Gazebo / MoveIt demo 里的 **`arm_controller`** 不是同一个名字。
@@ -163,6 +167,11 @@ DISABLE 一旦发出就保持到下一次 hardware `on_activate`：每帧序号�
 必须先按现有安全流程停止旧栈；拒绝复用已有 ControllerManager。
 仅在现场支撑机械臂及物体、操作区域安全时启动。
 
+示教仍使用 MIT 控制链路。V2 固件须提供新鲜的 MIT 模式读回并释放 V2 owner/lease；
+POS_VEL、模式切换或 V2 状态失效时不能接管重力控制，已运行生命周期进入 DISABLE 后
+不会因恢复 MIT 自动续发旧目标。`stm32h723_arm.launch.py` 支持
+`require_motor_control_status:=true`，已知 V2 部署可从启动起强制此门控。
+
 硬件只读 `drag_teaching` 与 `manual_teaching_gripper` 参数共同标识已验证配置。
 `teaching_gripper.py check-manual` 只读核验参数、无夹爪命令所有者、重力激活、
 新鲜米制反馈和七轴无故障 TRACK。兼容 `check` 同样核验手动配置；旧 `move/cancel`
@@ -177,6 +186,6 @@ RETURN 增益全部为零，`safe_stop` 直接进入 DISABLE，**不会主动回
 手动拖动没有规划器避碰，重力模型误差与负载变化可能造成漂移。
 
 验证入口：`test_teaching.py`、硬件 gtest `DragTeaching` 和隔离域
-`test/smoke_teaching.py`（模拟 MCU）：检查六轴 >5 N·m 重力链路、夹爪零输出、
+`test/smoke_teaching.py`（模拟 V2 MCU，强制 MIT 状态门控）：检查六轴 >5 N·m 重力链路、夹爪零输出、
 模拟手动开度的标定反馈、旧电动请求拒绝、控制器抢占拒绝及退出无 RETURN。
 这些不代表真实机械臂拖动手感、机械回驱阻力或负载验证。

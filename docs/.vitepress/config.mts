@@ -30,6 +30,7 @@ export default defineConfig({
           { text: '架构与包', link: '/architecture' },
           { text: '构建与运行', link: '/build-run' },
           { text: '控制栈与后端', link: '/controllers' },
+          { text: 'Motor Control V2 / POS_VEL', link: '/motor-control-v2' },
           { text: 'VLA 集成 (scheme B)', link: '/vla-integration' },
           { text: 'VLA 使用指南', link: '/vla-usage' },
           { text: '数据采集质量', link: '/data-collection' },

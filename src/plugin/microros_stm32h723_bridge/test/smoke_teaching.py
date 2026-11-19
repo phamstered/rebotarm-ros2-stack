@@ -16,7 +16,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory, get_package_prefix
 from controller_manager_msgs.srv import ListControllers, LoadController, ConfigureController, SwitchController
 from rclpy.qos import qos_profile_sensor_data
-from microros_stm32h723_bridge.msg import JointCommand
+from microros_stm32h723_bridge.msg import JointCommand, MotorControlStatus
 from std_srvs.srv import Trigger
 from sensor_msgs.msg import JointState
 
@@ -24,8 +24,10 @@ rclpy.init()
 node = rclpy.create_node('isolated_teaching_smoke')
 frames = []
 feedback = []
+drive_status = []
 node.create_subscription(JointState, '/robot_feedback/joint_states', lambda m: feedback.append(m), qos_profile_sensor_data)
 node.create_subscription(JointCommand, '/stm32/joint_commands', lambda m: frames.append(m), qos_profile_sensor_data)
+node.create_subscription(MotorControlStatus, '/stm32/motor_control_status', lambda m: drive_status.append(m), qos_profile_sensor_data)
 owned, logs = [], []
 
 
@@ -67,17 +69,18 @@ try:
             return output
         # Simulated hand motion is confined to this already isolated DDS domain.
         mock_path = str(Path(get_package_prefix('microros_stm32h723_bridge')) /
-                        'lib/microros_stm32h723_bridge/mock_stm32_node.py')
+                        'lib/microros_stm32h723_bridge/mock_motor_control_v2.py')
         fixture = Path(tmp) / 'manual_mock.py'
-        fixture.write_text(f"""import math, runpy, time
+        fixture.write_text(f"""import math, runpy, sys, time
 import rclpy
-Base = runpy.run_path({mock_path!r})['MockStm32Node']
+sys.path.insert(0, {str(Path(mock_path).parent)!r})
+Base = runpy.run_path({mock_path!r})['MockMotorControlV2']
 class ManualMock(Base):
-    def _update(self):
+    def update(self):
         q = .02 + .005 * math.sin(time.monotonic())
-        self._positions[6] = (q - .004282757541) / -.008612826752
-        self._target[6] = self._positions[6]
-        super()._update()
+        self.model.position[6] = (q - .004282757541) / -.008612826752
+        self.model.target[6] = self.model.position[6]
+        super().update()
 rclpy.init()
 node = ManualMock()
 try:
@@ -86,11 +89,13 @@ finally:
     node.destroy_node()
     rclpy.shutdown()
 """)
-        start([sys.executable, str(fixture)], 'mock.log')
+        start([sys.executable, str(fixture), '--ros-args', '-p',
+               'command_topic:=/stm32/joint_commands'], 'mock.log')
         gains = str(Path(get_package_share_directory('microros_stm32h723_bridge')) / 'config/teaching_mit_gains.yaml')
         start(['ros2', 'launch', 'microros_stm32h723_bridge', 'stm32h723_arm.launch.py',
                'position_controller:=teaching', 'enable_gravity_controller:=true',
-               'enable_gripper:=true', 'gains_file:=' + gains], 'control.log')
+               'enable_gripper:=true', 'require_motor_control_status:=true',
+               'gains_file:=' + gains], 'control.log')
         deadline = time.monotonic() + 40
         while time.monotonic() < deadline:
             response = request('/controller_manager/list_controllers', ListControllers, ListControllers.Request())
@@ -101,6 +106,10 @@ finally:
         assert {'gravity_compensation_controller', 'joint_state_broadcaster'} <= active
         assert not active & {'arm_teleop_controller', 'arm_trajectory_controller', 'vla_position_controller', 'gripper_trajectory_controller', 'gripper_teleop_controller'}
         spin(2)
+        assert drive_status, 'missing V2 MIT admission status'
+        assert drive_status[-1].protocol_version == 2
+        assert list(drive_status[-1].control_modes) == [1] * 7
+        assert drive_status[-1].owner_source_id == drive_status[-1].lease_id == 0
         wait(*helper('check-manual'))
         # At the mock's zero arm pose, the real Pinocchio model needs more
         # than 5 Nm on joint3. Exercise gravity -> hardware -> serialized MCU
@@ -139,7 +148,8 @@ finally:
         stopped = frames[before:]
         assert any(m.mode == 3 for m in stopped)
         assert all(m.mode != 2 for m in stopped)
-        print('PASS teaching: gravity feed-forward above 5 Nm, zero arm stiffness, zero gripper output, calibrated manual feedback, legacy action rejection, controller exclusion, no RETURN')
+        assert drive_status[-1].mode == 3 and drive_status[-1].enabled_joint_mask == 0
+        print('PASS teaching: V2-confirmed MIT, gravity feed-forward above 5 Nm, zero arm stiffness, zero gripper output, calibrated manual feedback, legacy action rejection, controller exclusion, no RETURN')
 except BaseException:
     for log in logs:
         log.flush(); log.seek(0); print(log.read())

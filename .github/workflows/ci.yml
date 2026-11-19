@@ -48,6 +48,9 @@ jobs:
         with:
           required-ros-distributions: humble
 
+      - name: Docker runtime launcher tests
+        run: python3 -m unittest discover -s scripts -p test_docker_runtime.py
+
       - name: Install rosdep dependencies
         run: |
           set -euo pipefail

@@ -107,3 +107,9 @@ ros2_control 控制器层（controller_manager）
 
 
 拖动示教使用 `position_controller=teaching`：六轴只接受重力 effort，夹爪保持零主动输出并提供标定反馈。硬件校验专用增益，拒绝七轴 position/velocity 及夹爪 effort 控制器接管；不启动夹爪 JTC。桌面通过只读适配器核验 `drag_teaching` / `manual_teaching_gripper` 标记、控制器与反馈，保存七轴实测姿态；不发送夹爪运动目标。
+
+示教沿用同一 `MicroRosSystem` MIT 准入：发现 V2 状态后，必须持续获得新鲜、已验证的 MIT 模式，且没有 V2 owner/lease。POS_VEL、切换中、故障或 V2 状态失效时拒绝控制器接管并进入终止的 DISABLE 生命周期。部署确认支持 V2 的固件时，可使用 `require_motor_control_status:=true` 从启动起强制要求该状态；示教不会自动改写驱动模式或取得 V2 租约。
+
+## Docker runtime
+
+Humble 容器使用 host 网络及独立 PID 命名空间，构建目录与 host 分离。部署与权限边界见 [Docker 运行说明](docker.md)。

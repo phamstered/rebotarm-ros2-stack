@@ -119,8 +119,90 @@ struct MicroRosSystemTestAccess
     system.sequence_ = std::numeric_limits<uint32_t>::max() - 1;
   }
 
+  static void drive_status(
+    MicroRosSystem & system, uint8_t drive, uint64_t owner = 0,
+    uint64_t boot = 123, uint32_t sequence = 0,
+    uint8_t mode = 0, bool disabled_verified = false)
+  {
+    auto status = std::make_shared<msg::MotorControlStatus>();
+    status->protocol_version = 2;
+    status->boot_id = boot;
+    status->last_command_sequence = sequence;
+    status->mode = mode;
+    status->disabled_verified = disabled_verified;
+    status->control_epoch = 1;
+    status->header.stamp = system.node_->now();
+    status->verified_joint_mask = 0x7f;
+    status->control_modes.fill(drive);
+    status->owner_source_id = owner;
+    system.motor_control_callback(status);
+  }
+
+  static void invalid_target(MicroRosSystem & system)
+  {
+    system.command_position_[0] = std::numeric_limits<double>::quiet_NaN();
+  }
+
   static std::shared_ptr<rclcpp::Node> node(MicroRosSystem & system) {return system.node_;}
 };
+
+TEST(MotorModeAdmission, PosVelRejectsControllerClaimsAndLatchesDisable)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::drive_status(system, 2);
+  EXPECT_EQ(system.prepare_command_mode_switch({"joint1/position"}, {}),
+    hardware_interface::return_type::ERROR);
+  MicroRosSystemTestAccess::invalid_target(system);
+  MicroRosSystemTestAccess::write(system);  // Stop bypasses invalid target parameters.
+  MicroRosSystemTestAccess::assert_disabled(system);
+  MicroRosSystemTestAccess::drive_status(system, 1);
+  MicroRosSystemTestAccess::write(system);  // Restored MIT cannot resume stale goals.
+  MicroRosSystemTestAccess::assert_disabled(system);
+}
+
+TEST(MotorModeAdmission, ConfirmedMitStillRejectsV2Ownership)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::drive_status(system, 1, 42);
+  EXPECT_EQ(system.prepare_command_mode_switch({"joint1/position"}, {}),
+    hardware_interface::return_type::ERROR);
+  MicroRosSystemTestAccess::write(system);
+  MicroRosSystemTestAccess::assert_disabled(system);
+}
+
+TEST(MotorModeAdmission, RebootRebasesStopSequenceAndIgnoresOldLegacyFeedback)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::near_wrap(system);
+  const auto previous = std::numeric_limits<uint32_t>::max() - 1;
+  MicroRosSystemTestAccess::drive_status(system, 1, 0, 123, previous);
+  MicroRosSystemTestAccess::write(system);
+  MicroRosSystemTestAccess::acknowledge(system, previous, msg::HardwareStatus::MODE_TRACK, 0);
+  MicroRosSystemTestAccess::drive_status(system, 1, 0, 124, 0);
+  MicroRosSystemTestAccess::write(system);
+  MicroRosSystemTestAccess::assert_disabled(system);
+  EXPECT_EQ(MicroRosSystemTestAccess::sequence(system), 1U);
+  EXPECT_EQ(MicroRosSystemTestAccess::first_disable(system), 1U);
+  MicroRosSystemTestAccess::write(system);
+  EXPECT_EQ(MicroRosSystemTestAccess::sequence(system), 2U);
+}
+
+TEST(MotorModeAdmission, DeactivateRequiresVerifiedPhysicalStopForV2Firmware)
+{
+  MicroRosSystem system;
+  MicroRosSystemTestAccess::prepare(system);
+  MicroRosSystemTestAccess::drive_status(system, 2);
+  MicroRosSystemTestAccess::write(system);
+  const auto sequence = MicroRosSystemTestAccess::sequence(system);
+  MicroRosSystemTestAccess::acknowledge(system, sequence, msg::HardwareStatus::MODE_DISABLE, 0);
+  MicroRosSystemTestAccess::drive_status(system, 2, 0, 123, sequence, 3, false);
+  EXPECT_EQ(system.on_deactivate(rclcpp_lifecycle::State()), hardware_interface::CallbackReturn::ERROR);
+  MicroRosSystemTestAccess::drive_status(system, 2, 0, 123, sequence, 3, true);
+  EXPECT_EQ(system.on_deactivate(rclcpp_lifecycle::State()), hardware_interface::CallbackReturn::SUCCESS);
+}
 
 TEST(StopLifecycle, CompletedReturnRemainsDisabledAndSequencesAdvance)
 {
@@ -339,6 +421,7 @@ TEST(DragTeaching, RejectsArmAndGripperClaimsButKeepsGravityEffort)
   MicroRosSystem system;
   MicroRosSystemTestAccess::prepare(system);
   MicroRosSystemTestAccess::teaching(system);
+  MicroRosSystemTestAccess::drive_status(system, 1);
   EXPECT_EQ(system.prepare_command_mode_switch({"joint1/position"}, {}), hardware_interface::return_type::ERROR);
   EXPECT_EQ(system.prepare_command_mode_switch({"joint2/position", "joint2/velocity"}, {}), hardware_interface::return_type::ERROR);
   EXPECT_EQ(system.perform_command_mode_switch({"gripper_finger_left_joint/position", "gripper_finger_left_joint/velocity"}, {}), hardware_interface::return_type::ERROR);
@@ -347,6 +430,23 @@ TEST(DragTeaching, RejectsArmAndGripperClaimsButKeepsGravityEffort)
   MicroRosSystemTestAccess::returning(system);
   MicroRosSystemTestAccess::write(system);
   MicroRosSystemTestAccess::assert_disabled(system);
+}
+
+TEST(DragTeaching, RejectsGravityClaimsDuringPosVelOrV2OwnershipAndCannotResumeAfterStop)
+{
+  for (const bool owned_mit : {false, true}) {
+    MicroRosSystem system;
+    MicroRosSystemTestAccess::prepare(system);
+    MicroRosSystemTestAccess::teaching(system);
+    MicroRosSystemTestAccess::drive_status(system, owned_mit ? 1 : 2, owned_mit ? 42 : 0);
+    EXPECT_EQ(system.prepare_command_mode_switch({"joint1/effort"}, {}),
+      hardware_interface::return_type::ERROR);
+    MicroRosSystemTestAccess::write(system);
+    MicroRosSystemTestAccess::assert_disabled(system);
+    MicroRosSystemTestAccess::drive_status(system, 1);
+    MicroRosSystemTestAccess::write(system);
+    MicroRosSystemTestAccess::assert_disabled(system);
+  }
 }
 
 TEST(DragTeaching, PreservesMeasuredGravityDemandAndZerosGripperOutput)
@@ -367,6 +467,7 @@ TEST(DragTeaching, PreservesMeasuredGravityDemandAndZerosGripperOutput)
   // Joint3 needed -7.7179 Nm at the observed sag pose. Check both signs and
   // demand above the retained caps through the actual serialized write path.
   for (const double demand : {-7.7179, 7.7179, -20.0, 20.0}) {
+    MicroRosSystemTestAccess::drive_status(system, 1);
     MicroRosSystemTestAccess::effort(system, demand);
     MicroRosSystemTestAccess::write(system);
     const auto sequence = MicroRosSystemTestAccess::sequence(system);
