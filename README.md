@@ -110,6 +110,7 @@ Static build: `npm run docs:build`.
 - Build & run: [docs/build-run.md](docs/build-run.md)
 - Control stack: [docs/controllers.md](docs/controllers.md)
 - CI: [docs/ci.md](docs/ci.md)
+- 3DGS capture and orbit scan (draft, not implemented): [docs/3dgs-scan-design.md](docs/3dgs-scan-design.md)
 - Contributor / agent notes: [AGENTS.md](AGENTS.md)
 - Historical notes (not authoritative vs code): [CLAUDE.md](CLAUDE.md)
 

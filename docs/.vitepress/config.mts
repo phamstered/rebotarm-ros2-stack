@@ -40,6 +40,7 @@ export default defineConfig({
         text: '设计草案',
         items: [
           { text: '一键重力 / 参数辨识', link: '/gravity-identification' },
+          { text: '3DGS 采集与环绕扫描（草案）', link: '/3dgs-scan-design' },
         ],
       },
       {

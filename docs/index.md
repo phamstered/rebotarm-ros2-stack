@@ -68,6 +68,7 @@ features:
 5. [ros2_control 关联机制](./ros2_control_association) — controller ↔ hardware 接口匹配
 6. [一键重力 / 参数辨识（设计）](./gravity-identification) — StartGravityID action 与固件 HOLD 契约
 7. [数据采集质量清单](./data-collection) — stamp 预检、`/stm32/status`、HOLD/fault 11 门禁
+8. [3DGS 采集与环绕扫描（草案，尚未实现）](./3dgs-scan-design) — 离线 splat 的采集契约与环绕轨迹；不是当前产品行为
 
 ## 本机预览文档
 
