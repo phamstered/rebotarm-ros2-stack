@@ -4,6 +4,8 @@
 
 相关文档：[VLA 使用指南](./vla-usage)、[VLA 集成](./vla-integration)、[构建与运行](./build-run)。固件与 micro-ROS Agent 时间同步细节由 **rebotarm-executor** 文档补充。录制脚本的硬门禁仍是「`/stm32/joint_states` stamp 非零」；TF 用的反馈时钟比这一条更严，见下文「反馈时钟」。
 
+离线 3DGS 若按 [采集契约（草案，尚未实现）](./3dgs-scan-design) 落地，逐帧丢弃在本清单之上再加图像 stamp 的 TF 查找与关键帧规则。该页不是当前录制行为。
+
 ::: tip 一句话
 开录前跑 `./scripts/check_collection_ready.sh`：`header.stamp` 非零、`/stm32/status` 的 `fault_code==0` 且 `mode==TRACK(1)`；始终同时录 status；靠近 HOLD / fault 11 不要录。
 :::
