@@ -115,7 +115,7 @@ Static build: `npm run docs:build`.
 
 ### Teleop DDS and shutdown behavior
 
-The Teleop entry uses a process-scoped Fast DDS UDP profile unless an explicit DDS XML profile is supplied. Rebuild `joint_state_relay` after updating the script: its `leader_driver` adapter runs the installed external Star Arm node with normal ROS shutdown handling, preserving serial/joint configuration and real errors. See [build/run](docs/build-run.md#teleop-discovery-and-signal-shutdown). Safe-stop and firmware acknowledgement checks remain required; no live SHM files are deleted.
+The Teleop entry uses a process-scoped Fast DDS UDP profile unless an explicit DDS XML profile is supplied. Rebuild `joint_state_relay` after updating the script: its `leader_driver` adapter runs the installed external Star Arm node with normal ROS shutdown handling, preserving serial/joint configuration and real errors. Its feedback adapter drops incomplete/non-finite servo monitor frames, reports the affected IDs, and invalidates SDK angle caches before querying so missing replies cannot refresh old poses. See [build/run](docs/build-run.md#teleop-discovery-and-signal-shutdown). Safe-stop and firmware acknowledgement checks remain required; no live SHM files are deleted.
 
 ### STM32 feedback clock admission
 
