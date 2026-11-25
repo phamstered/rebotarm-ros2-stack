@@ -140,6 +140,26 @@ source install/setup.bash
 
 The managed leader process now runs `ros2 run joint_state_relay leader_driver --ros-args -r __ns:=/leader -p lock:=disable`. This adapter uses the existing external `robo_driver.robo_driver.Arm_contorl` node and its cleanup method; the Star Arm SDK, serial path, joint mapping and local vendor changes stay external. Both leader and relay treat `KeyboardInterrupt` / `ExternalShutdownException` as expected ROS signal shutdown, clean the node/context, and propagate other failures. A native `RCLError` from a wait-set shutdown race is ignored only after `rclpy.ok()` confirms that the context has closed; the same error in a live context remains a failure. The prior safe-stop confirmation before process cleanup, STM32 fault/feedback checks and startup acknowledgements still apply. STM32 JointState timeout remains an error.
 
+### Leader monitor feedback validation
+
+If startup stops at `[3/9] Leader arm ROS feedback` with `NoneType * float`,
+a Star Arm servo has no valid monitor angle. The managed `leader_driver` adapter
+now clears cached `angle_monitor` values before each synchronous SDK request and
+publishes only complete frames with finite numeric angles for all configured servos.
+A missing reply, undiscovered servo or invalid angle drops the entire frame and
+logs the affected servo IDs (throttled to once per two seconds). It never fills zeros
+or refreshes the timestamp of cached feedback. Complete replies resume publication
+automatically; persistent missing replies still fail the existing startup timeout.
+Serial/SDK exceptions and invalid conversion results remain errors.
+
+Check leader power, serial wiring/path and servo discovery when those warnings persist.
+Rebuild/install `joint_state_relay` using the commands above; updating desktop files
+alone does not update the running ROS node. The adapter retains the vendor constructor,
+serial settings, joint names, angle conversion and cleanup. It only replaces monitor
+feedback assembly. No torque or follower safety gates are changed. These checks prove
+receipt during the SDK query, not hardware acquisition timestamps (the SDK does not
+expose those timestamps).
+
 Read-only / isolated checks (use a nonzero ROS domain, no serial hardware):
 
 ```bash
